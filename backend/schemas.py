@@ -184,3 +184,31 @@ class BrandingRequest(BaseModel):
 class BrandingResponse(BaseModel):
     post_content: str
     professional_bio: str
+
+# Certificate schemas
+class CertificateOut(BaseModel):
+    id: str
+    user_id: int
+    title: str
+    type: str
+    skill_completed: str
+    issue_date: datetime
+    completion_score: int
+    status: str
+    verification_url: str
+
+    class Config:
+        from_attributes = True
+
+class CertificateVerifyOut(BaseModel):
+    id: str
+    student_name: str
+    title: str
+    skill_completed: str
+    issue_date: datetime
+    completion_score: int
+    status: str
+    verification_url: str
+
+class CertificateClaim(BaseModel):
+    type: str

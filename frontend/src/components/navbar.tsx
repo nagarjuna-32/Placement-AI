@@ -21,7 +21,8 @@ import {
   BrainCircuit,
   UserCheck,
   Globe,
-  Compass
+  Compass,
+  ShieldCheck
 } from "lucide-react";
 
 export default function Navbar() {
@@ -104,7 +105,7 @@ export default function Navbar() {
   };
 
   const navLinks = [
-    { href: "/dashboard", label: "Dashboard", icon: Award, role: "student" },
+    { href: "/dashboard", label: "Dashboard", icon: Compass, role: "student" },
     { href: "/resume-analyzer", label: "AI Resume", icon: FileText, role: "student" },
     { href: "/jobs", label: "Jobs & Tracker", icon: Briefcase, role: "student" },
     { href: "/coach", label: "AI Speech Coach", icon: MessageSquare, role: "student" },
@@ -113,6 +114,7 @@ export default function Navbar() {
     { href: "/coding", label: "Coding Sandbox", icon: Terminal, role: "student" },
     { href: "/agent", label: "AI Career Agent", icon: Compass, role: "student" },
     { href: "/portfolio", label: "AI Portfolio", icon: Globe, role: "student" },
+    { href: "/certificates", label: "Certificates", icon: ShieldCheck, role: "student" },
     { href: "/recruiter", label: "Recruiter Portal", icon: UserCheck, role: "recruiter" },
   ];
 

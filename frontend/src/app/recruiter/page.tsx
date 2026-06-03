@@ -28,8 +28,11 @@ interface Candidate {
 }
 
 export default function RecruiterDashboard() {
-  const [activeTab, setActiveTab] = useState<"candidates" | "post_job">("candidates");
+  const [activeTab, setActiveTab] = useState<"candidates" | "post_job" | "certificates">("candidates");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [allCertificates, setAllCertificates] = useState<any[]>([]);
+  const [adminRole, setAdminRole] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSkillFilter, setSelectedSkillFilter] = useState("all");
   const [jobTitle, setJobTitle] = useState("");
@@ -43,8 +46,53 @@ export default function RecruiterDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const fetchAllCertificates = async () => {
+    try {
+      const token = localStorage.getItem("token") || "mock_token";
+      const res = await fetch("http://127.0.0.1:8000/certificates/admin/list", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAllCertificates(data);
+      }
+    } catch (err) {
+      console.log("Backend offline, loading mock issued certificates:", err);
+      setAllCertificates([
+        { id: "PMC-RES-8FA29C1B", user_id: 1, title: "Resume Ready Certificate", type: "resume_ready", skill_completed: "AI Resume Optimization", issue_date: new Date().toISOString(), completion_score: 88, status: "valid", verification_url: "/verify-certificate/PMC-RES-8FA29C1B" },
+        { id: "PMC-COM-4C9E82DF", user_id: 1, title: "Communication Skills Certificate", type: "communication_skills", skill_completed: "Speech Fluency", issue_date: new Date().toISOString(), completion_score: 81, status: "valid", verification_url: "/verify-certificate/PMC-COM-4C9E82DF" }
+      ]);
+    }
+  };
+
+  const handleRevokeCertificate = async (certId: string) => {
+    setRevokingId(certId);
+    try {
+      const token = localStorage.getItem("token") || "mock_token";
+      const res = await fetch(`http://127.0.0.1:8000/certificates/admin/revoke/${certId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchAllCertificates();
+      }
+    } catch (err) {
+      console.error(err);
+      setAllCertificates(allCertificates.map(c => c.id === certId ? { ...c, status: "revoked" } : c));
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "certificates" && adminRole) {
+      fetchAllCertificates();
+    }
+  }, [activeTab, adminRole]);
+
   useEffect(() => {
     const userRole = localStorage.getItem("userRole");
+    setAdminRole(userRole === "admin");
     if (userRole === "student") {
       window.location.href = "/dashboard";
       return;
@@ -203,6 +251,17 @@ export default function RecruiterDashboard() {
             <PlusCircle className="w-4 h-4" />
             <span>Post a Job</span>
           </button>
+          {adminRole && (
+            <button
+              onClick={() => setActiveTab("certificates")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                activeTab === "certificates" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Award className="w-4 h-4" />
+              <span>Certificates Manager</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -437,6 +496,72 @@ export default function RecruiterDashboard() {
               <span>{submitting ? "Publishing..." : "Publish Job Posting"}</span>
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Tab: Admin Certificates Manager */}
+      {activeTab === "certificates" && adminRole && (
+        <div className="flex flex-col gap-6">
+          <div className="border border-zinc-800/85 rounded-2xl overflow-hidden bg-zinc-900/10">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-950 border-b border-zinc-900 text-zinc-400 font-bold uppercase tracking-wider">
+                  <th className="p-4">Certificate ID</th>
+                  <th className="p-4">Title / Category</th>
+                  <th className="p-4">Issue Date</th>
+                  <th className="p-4 text-center">Score</th>
+                  <th className="p-4 text-center">Status</th>
+                  <th className="p-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-900">
+                {allCertificates.map((cert) => (
+                  <tr key={cert.id} className="hover:bg-zinc-900/35 transition-colors">
+                    <td className="p-4 font-mono font-bold text-zinc-300">
+                      {cert.id}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-bold text-zinc-200">{cert.title}</span>
+                        <span className="text-[10px] text-zinc-500">{cert.skill_completed}</span>
+                      </div>
+                    </td>
+                    <td className="p-4 text-zinc-400">
+                      {new Date(cert.issue_date).toLocaleDateString()}
+                    </td>
+                    <td className="p-4 text-center font-bold text-zinc-350">
+                      {cert.completion_score}%
+                    </td>
+                    <td className="p-4 text-center">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                        cert.status === "valid" 
+                          ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" 
+                          : "bg-red-500/10 text-red-500 border border-red-500/20"
+                      }`}>
+                        {cert.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      {cert.status === "valid" ? (
+                        <button
+                          onClick={() => handleRevokeCertificate(cert.id)}
+                          disabled={revokingId === cert.id}
+                          className="px-2.5 py-1 bg-red-650 hover:bg-red-750 text-white rounded text-[10px] font-bold active:scale-95 transition-all disabled:opacity-50"
+                        >
+                          {revokingId === cert.id ? "Revoking..." : "Revoke"}
+                        </button>
+                      ) : (
+                        <span className="text-zinc-500 text-[10px] italic">No actions available</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {allCertificates.length === 0 && (
+              <div className="p-8 text-center text-zinc-500">No certificates have been generated yet.</div>
+            )}
+          </div>
         </div>
       )}
     </div>

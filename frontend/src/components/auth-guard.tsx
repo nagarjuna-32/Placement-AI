@@ -11,7 +11,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const token = localStorage.getItem("token");
     const publicPaths = ["/", "/login", "/register", "/pricing", "/about"];
-    const isPublicPath = publicPaths.includes(pathname);
+    const isPublicPath = publicPaths.includes(pathname) || pathname.startsWith("/verify-certificate/");
 
     if (!token && !isPublicPath) {
       // Force redirect to login page for all protected routes
@@ -22,7 +22,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   const publicPaths = ["/", "/login", "/register", "/pricing", "/about"];
-  const isPublicPath = publicPaths.includes(pathname);
+  const isPublicPath = publicPaths.includes(pathname) || pathname.startsWith("/verify-certificate/");
 
   // If loading and trying to view protected pages, show clean loader
   if (loading && !isPublicPath) {

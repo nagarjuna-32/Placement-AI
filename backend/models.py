@@ -29,6 +29,7 @@ class User(Base):
     github_analyses = relationship("GithubAnalysis", back_populates="user", cascade="all, delete-orphan")
     linkedin_optimizations = relationship("LinkedinOptimization", back_populates="user", cascade="all, delete-orphan")
     alerts = relationship("JobAlert", back_populates="user", cascade="all, delete-orphan")
+    certificates = relationship("Certificate", back_populates="user", cascade="all, delete-orphan")
 
 class Resume(Base):
     __tablename__ = "resumes"
@@ -140,3 +141,18 @@ class JobAlert(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="alerts")
+
+class Certificate(Base):
+    __tablename__ = "certificates"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String, nullable=False)
+    type = Column(String, nullable=False)
+    skill_completed = Column(String, nullable=False)
+    issue_date = Column(DateTime, default=datetime.utcnow)
+    completion_score = Column(Integer, default=0)
+    status = Column(String, default="valid")
+    verification_url = Column(String, nullable=False)
+
+    user = relationship("User", back_populates="certificates")

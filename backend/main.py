@@ -15,7 +15,8 @@ from routers import (
     github_linkedin, 
     market, 
     hr_panel,
-    orchestrator
+    orchestrator,
+    certificates
 )
 
 # Create all database tables
@@ -67,6 +68,7 @@ app.include_router(github_linkedin.router)
 app.include_router(market.router)
 app.include_router(hr_panel.router)
 app.include_router(orchestrator.router)
+app.include_router(certificates.router)
 
 @app.get("/")
 def read_root():

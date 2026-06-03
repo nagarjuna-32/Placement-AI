@@ -17,7 +17,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const isPublicPath = publicPaths.includes(pathname);
+  const isPublicPath = publicPaths.includes(pathname) || pathname.startsWith("/verify-certificate/");
 
   if (!token && !isPublicPath) {
     // If not authenticated and trying to access protected features, redirect to Login
