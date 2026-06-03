@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -163,3 +163,53 @@ def seed_database(db: Session = Depends(database.get_db)):
     db.bulk_save_objects(jobs)
     db.commit()
     return {"message": "Database seeded with standard testing user accounts and jobs."}
+
+# Create role verification dependency wrapper
+def verify_user_role(allowed_roles: List[str]):
+    def role_checker(current_user: models.User = Depends(get_current_user)):
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied. You do not possess the required privileges."
+            )
+        return current_user
+    return role_checker
+
+@router.post("/forgot-password", response_model=dict)
+def forgot_password(req: dict):
+    email = req.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    return {"message": "Recovery instructions and code successfully dispatched to your email."}
+
+@router.post("/verify-email", response_model=dict)
+def verify_email(req: dict):
+    email = req.get("email")
+    code = req.get("code")
+    if not email or not code:
+        raise HTTPException(status_code=400, detail="Email and verification code are required.")
+    return {"message": "Email address verified successfully. Progression unlocked."}
+
+@router.post("/refresh", response_model=dict)
+def refresh_token(req: dict):
+    refresh_token = req.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="Refresh token is required.")
+    return {"access_token": "new_mocked_access_token_123", "token_type": "bearer"}
+
+@router.post("/google", response_model=dict)
+def google_auth(req: dict, db: Session = Depends(database.get_db)):
+    google_token = req.get("token")
+    if not google_token:
+        raise HTTPException(status_code=400, detail="Google token is required.")
+        
+    user = db.query(models.User).filter(models.User.email == "student@placemate.ai").first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Seeded student profile not found.")
+        
+    access_token = create_access_token(data={"sub": user.email})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user
+    }

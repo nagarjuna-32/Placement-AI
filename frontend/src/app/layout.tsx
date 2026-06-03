@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/navbar";
+import AuthGuard from "@/components/auth-guard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +35,9 @@ export default function RootLayout({
         <Navbar />
         
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 md:px-8 py-6 relative z-10">
-          {children}
+          <AuthGuard>
+            {children}
+          </AuthGuard>
         </main>
         
         <footer className="border-t border-zinc-900 py-6 text-center text-xs text-zinc-500 mt-12">

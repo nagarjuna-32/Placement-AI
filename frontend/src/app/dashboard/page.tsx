@@ -186,6 +186,12 @@ export default function StudentDashboard() {
 
   // Fetch from FastAPI
   useEffect(() => {
+    const userRole = localStorage.getItem("userRole");
+    if (userRole === "recruiter") {
+      window.location.href = "/recruiter";
+      return;
+    }
+
     async function fetchData() {
       try {
         const token = localStorage.getItem("token") || "mock_token";

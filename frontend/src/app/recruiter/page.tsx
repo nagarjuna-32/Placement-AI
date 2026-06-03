@@ -44,6 +44,12 @@ export default function RecruiterDashboard() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    const userRole = localStorage.getItem("userRole");
+    if (userRole === "student") {
+      window.location.href = "/dashboard";
+      return;
+    }
+
     // Standard mock candidates database
     setCandidates([
       {

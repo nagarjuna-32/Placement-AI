@@ -21,6 +21,16 @@ from routers import (
 # Create all database tables
 models.Base.metadata.create_all(bind=engine)
 
+# Auto seed default demo users on startup
+from database import get_db
+from routers.auth import seed_database
+try:
+    db = next(get_db())
+    seed_database(db)
+    print("Database auto-seeded successfully with demo accounts.")
+except Exception as e:
+    print(f"Auto-seed warning: {e}")
+
 app = FastAPI(
     title="PlaceMate AI API",
     description="Backend API services for PlaceMate AI - Career Operating System",

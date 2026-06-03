@@ -31,8 +31,13 @@ export default function Navbar() {
   const [userRole, setUserRole] = useState<"student" | "recruiter" | "admin">("student");
   const [xp, setXp] = useState(1250);
   const [streak, setStreak] = useState(5);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
+    // Check if token exists
+    const token = localStorage.getItem("token");
+    setIsAuthenticated(!!token);
+
     // Read from localStorage if available
     const savedTheme = localStorage.getItem("theme") as "dark" | "light";
     if (savedTheme) {
@@ -52,8 +57,17 @@ export default function Navbar() {
       const updated = localStorage.getItem("userRole") as "student" | "recruiter" | "admin";
       if (updated) setUserRole(updated);
     };
+    
+    const handleAuthChanged = () => {
+      setIsAuthenticated(!!localStorage.getItem("token"));
+    };
+    
     window.addEventListener("roleChanged", handleRoleChanged);
-    return () => window.removeEventListener("roleChanged", handleRoleChanged);
+    window.addEventListener("authChanged", handleAuthChanged);
+    return () => {
+      window.removeEventListener("roleChanged", handleRoleChanged);
+      window.removeEventListener("authChanged", handleAuthChanged);
+    };
   }, []);
 
   const toggleTheme = () => {
@@ -79,6 +93,14 @@ export default function Navbar() {
     } else if (role === "student" && pathname.startsWith("/recruiter")) {
       window.location.href = "/dashboard";
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
+    setIsAuthenticated(false);
+    window.dispatchEvent(new Event("authChanged"));
+    window.location.href = "/";
   };
 
   const navLinks = [
@@ -183,11 +205,28 @@ export default function Navbar() {
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
-          {/* User Profile avatar */}
+          {/* User Profile avatar or Login Button */}
           <div className="flex items-center gap-2 border-l border-zinc-800 pl-3">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-[10px] shadow shadow-indigo-500/30">
-              {userRole === "student" ? "AM" : userRole === "recruiter" ? "SJ" : "AD"}
-            </div>
+            {isAuthenticated ? (
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-[10px] shadow shadow-indigo-500/30">
+                  {userRole === "student" ? "AM" : userRole === "recruiter" ? "SJ" : "AD"}
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="px-2 py-1 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded text-[9px] font-bold text-zinc-400 hover:text-white transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 active:scale-95 transition-all shadow"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
 
@@ -212,6 +251,35 @@ export default function Navbar() {
       {/* Mobile Drawer Menu */}
       {isMobileMenuOpen && (
         <div className="lg:hidden mt-3 pt-3 border-t border-zinc-800/60 flex flex-col gap-2 pb-4">
+          {/* Mobile Auth button */}
+          <div className="px-2 py-2 mb-2 bg-zinc-900/65 rounded-lg border border-zinc-800/80 flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-400">Account:</span>
+            {isAuthenticated ? (
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-[9px] shadow shadow-indigo-500/30">
+                  {userRole === "student" ? "AM" : userRole === "recruiter" ? "SJ" : "AD"}
+                </div>
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="px-2.5 py-1 bg-indigo-600/10 border border-indigo-500/20 rounded text-[10px] font-bold text-indigo-400 hover:text-white transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="px-2.5 py-1 bg-indigo-600 text-white rounded text-[10px] font-bold hover:bg-indigo-700 transition-colors"
+              >
+                Login
+              </Link>
+            )}
+          </div>
+
           <div className="flex justify-between items-center px-2 py-2 mb-2 bg-zinc-900/65 rounded-lg border border-zinc-800/80">
             <span className="text-xs font-semibold text-zinc-400">Current Role:</span>
             <div className="flex gap-1">
