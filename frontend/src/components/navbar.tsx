@@ -139,7 +139,7 @@ export default function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden lg:flex items-center gap-1">
-          {filteredLinks.map((link) => {
+          {isAuthenticated && filteredLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href;
             return (
@@ -162,7 +162,7 @@ export default function Navbar() {
         {/* Right side controls */}
         <div className="hidden md:flex items-center gap-3">
           {/* Gamified stats */}
-          {userRole === "student" && (
+          {isAuthenticated && userRole === "student" && (
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full text-[10px] font-bold text-amber-500" title="Daily Streak">
                 <Flame className="w-3 h-3 fill-current animate-bounce" />
@@ -176,26 +176,28 @@ export default function Navbar() {
           )}
 
           {/* Role Switcher */}
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 rounded-lg">
-            <button 
-              onClick={() => changeRole("student")}
-              className={`px-1.5 py-1 text-[10px] rounded font-semibold transition-all ${userRole === "student" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"}`}
-            >
-              Student
-            </button>
-            <button 
-              onClick={() => changeRole("recruiter")}
-              className={`px-1.5 py-1 text-[10px] rounded font-semibold transition-all ${userRole === "recruiter" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"}`}
-            >
-              Recruiter
-            </button>
-            <button 
-              onClick={() => changeRole("admin")}
-              className={`px-1.5 py-1 text-[10px] rounded font-semibold transition-all ${userRole === "admin" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"}`}
-            >
-              Admin
-            </button>
-          </div>
+          {isAuthenticated && (
+            <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 rounded-lg">
+              <button 
+                onClick={() => changeRole("student")}
+                className={`px-1.5 py-1 text-[10px] rounded font-semibold transition-all ${userRole === "student" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"}`}
+              >
+                Student
+              </button>
+              <button 
+                onClick={() => changeRole("recruiter")}
+                className={`px-1.5 py-1 text-[10px] rounded font-semibold transition-all ${userRole === "recruiter" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"}`}
+              >
+                Recruiter
+              </button>
+              <button 
+                onClick={() => changeRole("admin")}
+                className={`px-1.5 py-1 text-[10px] rounded font-semibold transition-all ${userRole === "admin" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"}`}
+              >
+                Admin
+              </button>
+            </div>
+          )}
 
           {/* Theme Toggle */}
           <button 
@@ -280,43 +282,47 @@ export default function Navbar() {
             )}
           </div>
 
-          <div className="flex justify-between items-center px-2 py-2 mb-2 bg-zinc-900/65 rounded-lg border border-zinc-800/80">
-            <span className="text-xs font-semibold text-zinc-400">Current Role:</span>
-            <div className="flex gap-1">
-              <button 
-                onClick={() => changeRole("student")}
-                className={`px-2 py-1 text-[10px] rounded font-medium ${userRole === "student" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}
-              >
-                Student
-              </button>
-              <button 
-                onClick={() => changeRole("recruiter")}
-                className={`px-2 py-1 text-[10px] rounded font-medium ${userRole === "recruiter" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}
-              >
-                Recruiter
-              </button>
-            </div>
-          </div>
+          {isAuthenticated && (
+            <>
+              <div className="flex justify-between items-center px-2 py-2 mb-2 bg-zinc-900/65 rounded-lg border border-zinc-800/80">
+                <span className="text-xs font-semibold text-zinc-400">Current Role:</span>
+                <div className="flex gap-1">
+                  <button 
+                    onClick={() => changeRole("student")}
+                    className={`px-2 py-1 text-[10px] rounded font-medium ${userRole === "student" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}
+                  >
+                    Student
+                  </button>
+                  <button 
+                    onClick={() => changeRole("recruiter")}
+                    className={`px-2 py-1 text-[10px] rounded font-medium ${userRole === "recruiter" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}
+                  >
+                    Recruiter
+                  </button>
+                </div>
+              </div>
 
-          {filteredLinks.map((link) => {
-            const Icon = link.icon;
-            const isActive = pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive 
-                    ? "bg-indigo-600/10 text-indigo-400 border border-indigo-500/20" 
-                    : "text-zinc-400 hover:text-white hover:bg-zinc-800/40"
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {link.label}
-              </Link>
-            );
-          })}
+              {filteredLinks.map((link) => {
+                const Icon = link.icon;
+                const isActive = pathname === link.href;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isActive 
+                        ? "bg-indigo-600/10 text-indigo-400 border border-indigo-500/20" 
+                        : "text-zinc-400 hover:text-white hover:bg-zinc-800/40"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {link.label}
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
     </nav>
