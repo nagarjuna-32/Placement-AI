@@ -35,9 +35,21 @@ export default function Navbar() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Check if token exists
-    const token = localStorage.getItem("token");
-    setIsAuthenticated(!!token);
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(";").shift();
+      return null;
+    };
+
+    const cookieToken = getCookie("token");
+    if (!cookieToken) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("userRole");
+      setIsAuthenticated(false);
+    } else {
+      setIsAuthenticated(true);
+    }
 
     // Read from localStorage if available
     const savedTheme = localStorage.getItem("theme") as "dark" | "light";
@@ -60,7 +72,8 @@ export default function Navbar() {
     };
     
     const handleAuthChanged = () => {
-      setIsAuthenticated(!!localStorage.getItem("token"));
+      const updatedToken = getCookie("token");
+      setIsAuthenticated(!!updatedToken);
     };
     
     window.addEventListener("roleChanged", handleRoleChanged);

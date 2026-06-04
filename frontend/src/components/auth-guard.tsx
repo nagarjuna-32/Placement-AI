@@ -9,11 +9,20 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(";").shift();
+      return null;
+    };
+
+    const token = getCookie("token");
     const publicPaths = ["/", "/login", "/register", "/pricing", "/about"];
     const isPublicPath = publicPaths.includes(pathname) || pathname.startsWith("/verify-certificate/");
 
     if (!token && !isPublicPath) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("userRole");
       // Force redirect to login page for all protected routes
       window.location.href = "/login";
     } else {
