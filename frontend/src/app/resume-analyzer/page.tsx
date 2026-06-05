@@ -110,6 +110,7 @@ export default function ResumeAnalyzer() {
       if (res.ok) {
         const data = await res.json();
         setResult(data);
+        setAnalyzing(false);
       } else {
         generateMockResult();
       }
