@@ -114,3 +114,117 @@ def get_networking_recommendations(
             {"name": "FastAPI Creator Webinar", "type": "Virtual Event", "date": "June 22, 2026"}
         ]
     }
+
+@router.get("/coach-directive", response_model=schemas.CoachDirective)
+def get_coach_directive(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    # 1. Analyze previous interview attempts to find weak topics
+    weak_topics = []
+    attempts = db.query(models.InterviewAttempt).filter(models.InterviewAttempt.user_id == current_user.id).all()
+    
+    for attempt in attempts:
+        # If user struggled (score < 75), inspect individual replay items if available
+        if attempt.score < 75:
+            if attempt.video_analysis and "replay" in attempt.video_analysis:
+                for item in attempt.video_analysis["replay"]:
+                    feedback = item.get("feedback", "").lower()
+                    q = item.get("question", "").lower()
+                    # Mark topic as weak if critique was negative
+                    if "generic" in feedback or "brief" in feedback or "could add more detail" in feedback:
+                        if "python" in q or "list" in q or "decorator" in q or "generator" in q:
+                            weak_topics.append("Python Programming")
+                        elif "sql" in q or "join" in q or "index" in q or "transaction" in q:
+                            weak_topics.append("SQL Databases")
+                        elif "model" in q or "regression" in q or "forest" in q or "overfit" in q:
+                            weak_topics.append("Machine Learning")
+                        elif "fastapi" in q or "async" in q or "depends" in q or "dependency" in q:
+                            weak_topics.append("FastAPI Microservices")
+                        elif "react" in q or "state" in q or "render" in q or "dom" in q or "next.js" in q:
+                            weak_topics.append("React Frontend")
+                        elif "project" in q or "architecture" in q or "scale" in q:
+                            weak_topics.append("System Architecture & Design")
+                            
+    # Deduplicate weak topics
+    weak_topics = list(dict.fromkeys(weak_topics))
+    if not weak_topics:
+        weak_topics = ["SQL Query Optimization", "System Architecture Scales"]
+        
+    # 2. Synthesize recommendations based on weak topics
+    next_goals = []
+    recommended_projects = []
+    recommended_certs = []
+    
+    for wt in weak_topics:
+        if wt == "SQL Databases" or wt == "SQL Query Optimization":
+            next_goals.append("Master relational schema normalization, B-Tree indexing, and query plans.")
+            recommended_projects.append("Write a high-performance transactional SQL ledger with Redis cache layer.")
+            recommended_certs.append("Microsoft Certified: Power BI Data Analyst Associate")
+        elif wt == "Python Programming":
+            next_goals.append("Understand Python memory layouts, generators, closure mechanisms, and the GIL.")
+            recommended_projects.append("Implement a custom asynchronous task runner from scratch using yield.")
+            recommended_certs.append("HackerRank Problem Solving (Gold)")
+        elif wt == "React Frontend":
+            next_goals.append("Master React reconciliation, virtual DOM list rendering, and Next.js hydration loops.")
+            recommended_projects.append("Develop a drag-and-drop workflow dashboard using Framer Motion.")
+            recommended_certs.append("Meta Front-End Developer Professional Certificate")
+        elif wt == "Machine Learning":
+            next_goals.append("Study bias-variance tradeoffs, decision trees, and ensemble classifiers.")
+            recommended_projects.append("Train and deploy a dynamic user churn prediction classifier in scikit-learn.")
+            recommended_certs.append("Google Professional Machine Learning Engineer")
+        elif wt == "FastAPI Microservices" or wt == "System Architecture & Design" or wt == "System Architecture Scales":
+            next_goals.append("Understand API rate-limiting, token validation cycles, and ASGI concurrency.")
+            recommended_projects.append("Design a distributed URL shortener service supporting 10k requests/min.")
+            recommended_certs.append("AWS Certified Solutions Architect - Associate")
+            
+    # Guarantee at least 2 goals/projects/certs
+    if len(next_goals) < 2:
+        next_goals.extend(["Review advanced algorithm complexities.", "Complete weekly mock interviews."])
+    if len(recommended_projects) < 2:
+        recommended_projects.extend(["Create an online collaboration portal using WebSocket protocols."])
+    if len(recommended_certs) < 2:
+        recommended_certs.extend(["HackerRank Problem Solving (Gold)"])
+        
+    next_goals = list(dict.fromkeys(next_goals))[:3]
+    recommended_projects = list(dict.fromkeys(recommended_projects))[:3]
+    recommended_certs = list(dict.fromkeys(recommended_certs))[:3]
+    
+    # 3. Pull recommended jobs matching user skills
+    resume = db.query(models.Resume).filter(models.Resume.user_id == current_user.id).order_by(models.Resume.id.desc()).first()
+    user_skills = resume.extracted_skills if (resume and resume.extracted_skills) else ["Python", "SQL", "FastAPI"]
+    
+    all_jobs = db.query(models.JobMatch).all()
+    jobs_out = []
+    
+    for job in all_jobs:
+        req_skills = job.required_skills or []
+        common = set(user_skills).intersection(set(req_skills))
+        match_score = int((len(common) / len(req_skills)) * 100) if req_skills else 70
+        missing = list(set(req_skills) - set(user_skills))
+        
+        jobs_out.append({
+            "id": job.id,
+            "title": job.title,
+            "company": job.company,
+            "location": job.location,
+            "type": job.type,
+            "mode": job.mode,
+            "salary": job.salary,
+            "required_skills": req_skills,
+            "match_score": max(50, min(100, match_score)),
+            "missing_skills": missing,
+            "why_matches": f"Matches {len(common)} of your resume skills.",
+            "apply_url": job.apply_url
+        })
+        
+    jobs_out.sort(key=lambda x: x["match_score"], reverse=True)
+    
+    return schemas.CoachDirective(
+        weak_topics=weak_topics,
+        next_goals=next_goals,
+        recommended_projects=recommended_projects,
+        recommended_certs=recommended_certs,
+        recommended_jobs=jobs_out[:3]
+    )
+

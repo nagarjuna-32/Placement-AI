@@ -22,7 +22,8 @@ import {
   Copy,
   Check,
   Briefcase,
-  X
+  X,
+  Plus
 } from "lucide-react";
 
 interface ReadinessData {
@@ -80,6 +81,24 @@ export default function StudentDashboard() {
   const [orchestratorLogs, setOrchestratorLogs] = useState<string[]>([]);
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
 
+  // SVG Chart Mock Data
+  const mockTrends = [
+    { label: "Mock 1", tech: 62, comm: 70, conf: 65 },
+    { label: "Mock 2", tech: 68, comm: 72, conf: 70 },
+    { label: "Mock 3", tech: 75, comm: 78, conf: 73 },
+    { label: "Mock 4", tech: 81, comm: 80, conf: 78 },
+    { label: "Mock 5", tech: 85, comm: 83, conf: 82 }
+  ];
+
+  // Helper to generate SVG path
+  const getSvgPath = (key: 'tech' | 'comm' | 'conf') => {
+    return mockTrends.map((val, idx) => {
+      const x = idx * 65 + 25;
+      const y = 130 - (val[key] - 50) * 2.2;
+      return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+    }).join(' ');
+  };
+
   const triggerOrchestratedSync = async () => {
     setIsOrchestrating(true);
     setOrchestratorLogs(["Initializing Master Orchestrator (AI CEO)...", "Resolving collaborator dependencies..."]);
@@ -104,7 +123,7 @@ export default function StudentDashboard() {
       
       if (res.ok) {
         const data = await res.json();
-        setOrchestratorLogs(data.logs || ["Orchestrated search completed successfully."]);
+        setOrchestratorLogs(data.logs || ["Orchestrated update completed successfully."]);
         if (data.placement_prediction) {
           setPlacementProbability(data.placement_prediction.placement_probability);
           setRecommendedCompanies(data.placement_prediction.recommended_companies);
@@ -119,7 +138,6 @@ export default function StudentDashboard() {
         simulateOrchestratorSync();
       }
     } catch (e) {
-      console.log("Offline: Simulating orchestrator sync client-side.");
       simulateOrchestratorSync();
     } finally {
       setIsOrchestrating(false);
@@ -153,7 +171,6 @@ export default function StudentDashboard() {
       "[Placement Prediction Agent]: Hiring probability evaluated at 89%. Recommended companies loaded.",
       "Orchestrating -> Memory Agent (Final Audit)",
       "[Memory Agent]: Logging user action 'profile_update' into long-term profile records.",
-      "[Memory Agent]: Updating preference metrics and progress parameters.",
       "[Memory Agent]: Memory records: synced portfolio settings successfully.",
       "Master Orchestrator: Profile updates pipeline execution completed."
     ];
@@ -184,6 +201,17 @@ export default function StudentDashboard() {
     { id: 4, text: "Post project build details on LinkedIn to boost branding", done: true, points: 100, href: "/agent" }
   ]);
 
+  // Weekly Improvement checklists
+  const [weeklyGrowthTasks, setWeeklyGrowthTasks] = useState([
+    { id: 1, text: "Resolve SQL Join latency issues (Level 11 check)", done: false },
+    { id: 2, text: "Deliver friendly recruiter intro response without fillers", done: true },
+    { id: 3, text: "Update resume with e-commerce dashboard metrics", done: false }
+  ]);
+
+  const toggleGrowthTask = (id: number) => {
+    setWeeklyGrowthTasks(weeklyGrowthTasks.map(t => t.id === id ? { ...t, done: !t.done } : t));
+  };
+
   // Fetch from FastAPI
   useEffect(() => {
     const userRole = localStorage.getItem("userRole");
@@ -196,7 +224,6 @@ export default function StudentDashboard() {
       try {
         const token = localStorage.getItem("token") || "mock_token";
         
-        // Fetch readiness
         const readinessRes = await fetch("http://127.0.0.1:8000/profile/readiness", {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -205,7 +232,6 @@ export default function StudentDashboard() {
           setReadiness(data);
         }
 
-        // Fetch Tracker Stats
         const statsRes = await fetch("http://127.0.0.1:8000/tracker/stats", {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -214,7 +240,6 @@ export default function StudentDashboard() {
           setTrackerStats(data);
         }
 
-        // Fetch Alerts
         const alertsRes = await fetch("http://127.0.0.1:8000/alerts/", {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -223,7 +248,7 @@ export default function StudentDashboard() {
           setAlerts(data);
         }
       } catch (err) {
-        console.log("FastAPI offline, using Career OS mock database overlays:", err);
+        console.log("FastAPI offline, using mock stubs:", err);
         setMockAlerts();
       }
     }
@@ -232,9 +257,9 @@ export default function StudentDashboard() {
 
   const setMockAlerts = () => {
     setAlerts([
-      { id: 1, title: "New High Match Job Posted", message: "Google just posted a new 'AI Software Engineer' role that matches 92% of your resume skills! Check matching list.", read: false, created_at: new Date().toISOString() },
-      { id: 2, title: "Salary Increase Alert", message: "Market average salary for 'Data Analyst' positions increased by 8% in Bangalore area.", read: false, created_at: new Date().toISOString() },
-      { id: 3, title: "Profile Audit Complete", message: "Your GitHub developer score was evaluated at 85/100. Check suggestions to improve.", read: true, created_at: new Date().toISOString() }
+      { id: 1, title: "New High Match Job Posted", message: "Google just posted a new 'AI Software Engineer' role that matches 92% of your resume skills!", read: false, created_at: new Date().toISOString() },
+      { id: 2, title: "Salary Increase Alert", message: "Market average salary for 'Data Analyst' positions increased by 8% in Bangalore.", read: false, created_at: new Date().toISOString() },
+      { id: 3, title: "Profile Audit Complete", message: "Your GitHub developer score was evaluated at 85/100. Review suggestions.", read: true, created_at: new Date().toISOString() }
     ]);
   };
 
@@ -290,7 +315,7 @@ Status: ${readiness.status}
 Resume ATS Score: ${readiness.resume_score}/100
 Communication Coaching Score: ${readiness.communication_score}/100
 Technical Fundamentals Score: ${readiness.technical_score}/100
-Coding Execution Score: ${readiness.coding_score}/100
+Coding Execution Score: ${readiness.coding_score}/150
 
 2. APPLICATION TRACKING STATISTICS
 ---------------------------------
@@ -322,10 +347,10 @@ Success Rate: ${trackerStats.success_rate}%
   const unreadAlertsCount = alerts.filter(a => !a.read).length;
 
   return (
-    <div className="flex flex-col gap-8 py-4 relative">
+    <div className="flex flex-col gap-8 py-4 relative text-left">
       {/* Header and alerts bell */}
       <div className="flex justify-between items-center border-b border-zinc-900 pb-6 flex-wrap gap-4">
-        <div className="text-left">
+        <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Career Operating System</h1>
           <p className="text-zinc-400 text-sm mt-1">
             Analyze your Career Health index, track applications, and consult your personal AI Career Agent.
@@ -333,8 +358,6 @@ Success Rate: ${trackerStats.success_rate}%
         </div>
         
         <div className="flex items-center gap-3">
-          {/* Notifications Trigger Button */}
-          {/* Orchestrate Sync button */}
           <button
             onClick={triggerOrchestratedSync}
             disabled={isOrchestrating}
@@ -344,7 +367,6 @@ Success Rate: ${trackerStats.success_rate}%
             <span>{isOrchestrating ? "Orchestrating..." : "Orchestrate Profile Sync"}</span>
           </button>
 
-          {/* Notifications Trigger Button */}
           <button
             onClick={() => setIsAlertDrawerOpen(true)}
             className="p-2.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl relative transition-all shadow-sm"
@@ -376,7 +398,7 @@ Success Rate: ${trackerStats.success_rate}%
             <Heart className="w-20 h-20" />
           </div>
           <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase z-10">
-            Career Health Score
+            Placement Readiness
           </span>
           
           <div className="relative flex items-center justify-center z-10">
@@ -404,7 +426,7 @@ Success Rate: ${trackerStats.success_rate}%
             </svg>
             <div className="absolute flex flex-col items-center justify-center">
               <span className="text-3xl font-extrabold text-white">{readiness.readiness_score}</span>
-              <span className="text-[9px] text-zinc-500 font-bold uppercase">Health index</span>
+              <span className="text-[9px] text-zinc-500 font-bold uppercase">Readiness</span>
             </div>
           </div>
 
@@ -455,7 +477,7 @@ Success Rate: ${trackerStats.success_rate}%
 
           <div className="z-10">
             <span className="text-[10px] text-zinc-400 font-semibold px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-400 truncate max-w-full">
-              {recommendedCompanies.join(", ")}
+              Targeting: {recommendedCompanies.join(", ")}
             </span>
           </div>
         </div>
@@ -476,7 +498,7 @@ Success Rate: ${trackerStats.success_rate}%
 
           <div className="grid grid-cols-2 gap-4">
             <div className="p-3 bg-zinc-950/50 border border-zinc-800/50 rounded-xl flex flex-col text-left">
-              <span className="text-[10px] font-semibold text-zinc-500">Submitted Applications</span>
+              <span className="text-[10px] font-semibold text-zinc-500">Applications</span>
               <span className="text-2xl font-extrabold text-zinc-200 mt-1">{trackerStats.total_applications}</span>
             </div>
             <div className="p-3 bg-zinc-950/50 border border-zinc-800/50 rounded-xl flex flex-col text-left">
@@ -494,82 +516,166 @@ Success Rate: ${trackerStats.success_rate}%
           </div>
         </div>
 
-        {/* Affiliate / Referrals details */}
+        {/* ATS score details */}
         <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col justify-between gap-4">
           <div>
             <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase block mb-2">
-              Referrals & Affiliate Program
+              ATS Score & Referrals
             </span>
-            <p className="text-[11px] text-zinc-500 leading-relaxed font-normal">
-              Share your custom code with fellow developers. For every student who completes a level 1 interview via your link, you get <span className="text-indigo-400 font-bold">1 Free Pro Month</span>!
-            </p>
+            <div className="flex items-center justify-between p-3 bg-zinc-950/60 border border-zinc-850 rounded-xl">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-zinc-500 font-bold uppercase">ATS Score</span>
+                <span className="text-xl font-extrabold text-indigo-400 mt-0.5">{readiness.resume_score}/100</span>
+              </div>
+              <Link href="/resume-analyzer" className="text-[10px] text-indigo-400 hover:text-white font-bold flex items-center gap-0.5">
+                Optimize <ChevronRight className="w-2.5 h-2.5" />
+              </Link>
+            </div>
 
-            <div className="flex items-center gap-2 mt-4 bg-zinc-950 border border-zinc-850 p-2.5 rounded-xl">
-              <span className="text-xs font-mono text-zinc-400 font-semibold select-all truncate flex-1 pl-1">
+            <div className="flex items-center gap-2 mt-4 bg-zinc-950 border border-zinc-850 p-2 rounded-xl">
+              <span className="text-[10px] font-mono text-zinc-400 font-semibold select-all truncate flex-1 pl-1">
                 ALEX125PLACEMATE
               </span>
               <button
                 onClick={copyReferralCode}
-                className="p-1.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white rounded-lg transition-colors border border-zinc-800"
+                className="p-1 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white rounded-lg transition-colors border border-zinc-800"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
             </div>
           </div>
           
-          <div className="text-[9px] text-zinc-500 italic text-center">
-            🚀 3 successful referrals logged. Upgraded subscription active.
+          <div className="text-[8px] text-zinc-650 text-center font-bold">
+            Referrals program active. 3/5 points to free tier month.
           </div>
         </div>
       </div>
 
+      {/* Second Row: Activities, SVG Performance Chart, Career Agent */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Daily Activities */}
-        <div className="lg:col-span-1 p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-          <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase">
-            Operating System Activities
-          </span>
-          <div className="flex flex-col gap-3">
-            {tasks.map((task) => (
-              <div 
-                key={task.id}
-                className={`p-3 bg-zinc-950/50 border rounded-xl flex items-start gap-3 transition-colors ${
-                  task.done ? "border-indigo-500/20" : "border-zinc-800/60"
-                }`}
-              >
-                <button 
-                  onClick={() => handleTaskToggle(task.id)}
-                  className="mt-0.5 text-zinc-500 hover:text-indigo-400 shrink-0"
+        
+        {/* Weekly Activities & Weekly Checklist */}
+        <div className="lg:col-span-1 flex flex-col gap-6">
+          {/* Progression checklist */}
+          <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4 text-left">
+            <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase">
+              Activities Queue
+            </span>
+            <div className="flex flex-col gap-3">
+              {tasks.map((task) => (
+                <div 
+                  key={task.id}
+                  className={`p-3 bg-zinc-950/50 border rounded-xl flex items-start gap-3 transition-colors ${
+                    task.done ? "border-indigo-500/20" : "border-zinc-800/60"
+                  }`}
                 >
-                  {task.done ? (
-                    <CheckCircle2 className="w-4 h-4 text-indigo-500 fill-indigo-500/15" />
-                  ) : (
-                    <Circle className="w-4 h-4" />
-                  )}
-                </button>
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <span className={`text-xs font-medium leading-relaxed ${task.done ? "line-through text-zinc-500" : "text-zinc-300"}`}>
-                    {task.text}
-                  </span>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[9px] font-bold text-indigo-400">+{task.points} XP</span>
-                    {!task.done && (
-                      <Link 
-                        href={task.href} 
-                        className="text-[9px] font-bold text-zinc-400 hover:text-white flex items-center gap-0.5"
-                      >
-                        Start <ChevronRight className="w-2.5 h-2.5" />
-                      </Link>
+                  <button 
+                    onClick={() => handleTaskToggle(task.id)}
+                    className="mt-0.5 text-zinc-500 hover:text-indigo-400 shrink-0"
+                  >
+                    {task.done ? (
+                      <CheckCircle2 className="w-4 h-4 text-indigo-500 fill-indigo-500/15" />
+                    ) : (
+                      <Circle className="w-4 h-4" />
                     )}
+                  </button>
+                  <div className="flex-1 flex flex-col gap-1">
+                    <span className={`text-xs font-medium leading-relaxed ${task.done ? "line-through text-zinc-500" : "text-zinc-300"}`}>
+                      {task.text}
+                    </span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-bold text-indigo-400">+{task.points} XP</span>
+                      {!task.done && (
+                        <Link 
+                          href={task.href} 
+                          className="text-[9px] font-bold text-zinc-400 hover:text-white flex items-center gap-0.5"
+                        >
+                          Start <ChevronRight className="w-2.5 h-2.5" />
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          {/* Weekly Growth index Checklist */}
+          <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4 text-left">
+            <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase">
+              Weekly Improvement checklist
+            </span>
+            <div className="flex flex-col gap-2.5">
+              {weeklyGrowthTasks.map((task) => (
+                <div 
+                  key={task.id}
+                  onClick={() => toggleGrowthTask(task.id)}
+                  className={`p-2.5 bg-zinc-950/40 border rounded-xl flex items-center justify-between cursor-pointer transition-colors ${
+                    task.done ? "border-emerald-500/20 bg-emerald-950/5 text-zinc-500" : "border-zinc-850 hover:border-zinc-700 text-zinc-300"
+                  }`}
+                >
+                  <span className="text-xs font-medium">{task.text}</span>
+                  {task.done ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5 text-zinc-500" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* SVG Performance score trends line chart */}
+        <div className="lg:col-span-1 p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col justify-between gap-4 text-left">
+          <div>
+            <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase block border-b border-zinc-900 pb-2 mb-3">
+              Performance Trend Index
+            </span>
+            <p className="text-[10px] text-zinc-500 leading-relaxed font-normal">
+              Track communication, technical, and confidence progress metrics over the last 5 mock evaluations.
+            </p>
+          </div>
+
+          {/* Interactive SVG Chart container */}
+          <div className="w-full bg-zinc-950/70 border border-zinc-850 rounded-xl p-3 flex items-center justify-center relative shadow-inner h-40">
+            <svg viewBox="0 0 300 150" className="w-full h-full">
+              {/* Grid Lines */}
+              <line x1="20" y1="20" x2="280" y2="20" stroke="rgba(255,255,255,0.05)" strokeDasharray="3,3" />
+              <line x1="20" y1="75" x2="280" y2="75" stroke="rgba(255,255,255,0.05)" strokeDasharray="3,3" />
+              <line x1="20" y1="130" x2="280" y2="130" stroke="rgba(255,255,255,0.1)" />
+
+              {/* Technical Path (Indigo) */}
+              <path d={getSvgPath('tech')} fill="none" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" />
+              {/* Communication Path (Emerald) */}
+              <path d={getSvgPath('comm')} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="4,2" />
+              {/* Confidence Path (Amber) */}
+              <path d={getSvgPath('conf')} fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+
+              {/* Data circles for points */}
+              {mockTrends.map((val, idx) => {
+                const cx = idx * 65 + 25;
+                const cyTech = 130 - (val.tech - 50) * 2.2;
+                const cyComm = 130 - (val.comm - 50) * 2.2;
+                return (
+                  <g key={idx}>
+                    <circle cx={cx} cy={cyTech} r="3.5" fill="#6366f1" />
+                    <circle cx={cx} cy={cyComm} r="3.5" fill="#10b981" />
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div className="flex justify-between items-center text-[10px] text-zinc-500 font-semibold px-2">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500" /> Technical</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Communication</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> Confidence</span>
           </div>
         </div>
 
         {/* AI Career Agent mentor panel */}
-        <div className="lg:col-span-2 p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col justify-between gap-4">
+        <div className="lg:col-span-1 p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col justify-between gap-4 text-left">
           <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
             <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase">
               AI Career Agent Mentor
@@ -582,12 +688,12 @@ Success Rate: ${trackerStats.success_rate}%
             </Link>
           </div>
 
-          <div className="flex gap-4 items-start bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl">
-            <div className="p-3 bg-indigo-600/15 rounded-full text-indigo-400 border border-indigo-500/15 shrink-0">
-              <Sparkles className="w-5 h-5 animate-pulse" />
+          <div className="flex gap-3 items-start bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl">
+            <div className="p-2.5 bg-indigo-600/15 rounded-full text-indigo-400 border border-indigo-500/15 shrink-0 mt-0.5">
+              <Sparkles className="w-4 h-4 animate-pulse" />
             </div>
-            <div className="flex-1 flex flex-col gap-1.5 text-left">
-              <span className="text-xs font-bold text-zinc-200">Weekly Mentor Directive:</span>
+            <div className="flex flex-col gap-1 text-left flex-1">
+              <span className="text-xs font-bold text-zinc-200">Active Mentor Directive:</span>
               <p className="text-[11px] text-zinc-400 leading-relaxed font-normal">
                 Alex, looking at your profile, your resume ATS score is high (88), but we need to verify your codebase skills. Connect your GitHub profile in the **Coding Sandbox** to generate a repository check. We also recommend studying **Docker Containers** to patch your missing skills list.
               </p>
@@ -600,7 +706,7 @@ Success Rate: ${trackerStats.success_rate}%
               <div className="p-3 bg-zinc-950/40 border border-zinc-900 rounded-lg text-left">
                 <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/15 px-1.5 py-0.5 rounded font-bold uppercase">Learning</span>
                 <p className="text-[11px] font-semibold text-zinc-300 mt-1.5">Docker Containerization Guide</p>
-                <span className="text-[9px] text-zinc-500">freeCodeCamp (3.5 hours video course)</span>
+                <span className="text-[9px] text-zinc-500">freeCodeCamp (3.5 hours)</span>
               </div>
               <div className="p-3 bg-zinc-950/40 border border-zinc-900 rounded-lg text-left">
                 <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/15 px-1.5 py-0.5 rounded font-bold uppercase">Certification</span>
@@ -615,19 +721,16 @@ Success Rate: ${trackerStats.success_rate}%
       {/* Slide-out notifications Drawer */}
       {isAlertDrawerOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          {/* Backdrop overlay */}
           <div 
             onClick={() => setIsAlertDrawerOpen(false)}
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
           />
-          
-          {/* Drawer content */}
           <div className="relative w-80 max-w-full h-full bg-zinc-950 border-l border-zinc-900 p-6 flex flex-col justify-between shadow-2xl z-10">
             <div className="flex flex-col gap-6">
               <div className="flex justify-between items-center border-b border-zinc-900 pb-3">
                 <span className="text-xs font-bold text-zinc-200 tracking-wider uppercase flex items-center gap-1.5">
                   <Bell className="w-4 h-4 text-indigo-400 animate-pulse" />
-                  Job Alerts & Alerts
+                  Job Alerts & Notifications
                 </span>
                 <button
                   onClick={() => setIsAlertDrawerOpen(false)}
@@ -637,7 +740,6 @@ Success Rate: ${trackerStats.success_rate}%
                 </button>
               </div>
 
-              {/* Alert list */}
               <div className="flex flex-col gap-3.5 overflow-y-auto max-h-[75vh]">
                 {alerts.map((alert) => (
                   <div 
@@ -654,14 +756,14 @@ Success Rate: ${trackerStats.success_rate}%
                       {!alert.read && <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mt-1 shrink-0 animate-ping"></span>}
                     </div>
                     <p className="text-[10px] text-zinc-400 leading-relaxed font-normal">{alert.message}</p>
-                    <span className="text-[8px] text-zinc-600 mt-1 font-semibold">
+                    <span className="text-[8px] text-zinc-650 mt-1 font-semibold">
                       {new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="text-[9px] text-zinc-600 text-center font-bold">
+            <div className="text-[9px] text-zinc-650 text-center font-bold">
               Notifications trigger automatically upon profile match alerts.
             </div>
           </div>
@@ -671,13 +773,10 @@ Success Rate: ${trackerStats.success_rate}%
       {/* Slide-out Orchestrator Log Drawer */}
       {isLogDrawerOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          {/* Backdrop overlay */}
           <div 
             onClick={() => setIsLogDrawerOpen(false)}
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
           />
-          
-          {/* Drawer content */}
           <div className="relative w-96 max-w-full h-full bg-zinc-950 border-l border-zinc-900 p-6 flex flex-col justify-between shadow-2xl z-10">
             <div className="flex flex-col gap-6 h-full overflow-hidden">
               <div className="flex justify-between items-center border-b border-zinc-900 pb-3 shrink-0">
@@ -693,7 +792,6 @@ Success Rate: ${trackerStats.success_rate}%
                 </button>
               </div>
 
-              {/* Terminal Logs */}
               <div className="flex-1 bg-zinc-950 border border-zinc-900 p-4 rounded-xl font-mono text-[10px] overflow-y-auto text-left flex flex-col gap-2 scrollbar select-text shadow-inner">
                 {orchestratorLogs.map((log, idx) => {
                   let color = "text-zinc-400";
@@ -724,7 +822,7 @@ Success Rate: ${trackerStats.success_rate}%
                 })}
               </div>
             </div>
-            <div className="text-[9px] text-zinc-600 text-center font-bold pt-4 shrink-0 border-t border-zinc-900">
+            <div className="text-[9px] text-zinc-650 text-center font-bold pt-4 shrink-0 border-t border-zinc-900">
               Coordinated collaborate execution of 6 profile agents.
             </div>
           </div>

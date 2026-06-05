@@ -49,9 +49,12 @@ export default function InterviewHub() {
   const [panelReport, setPanelReport] = useState<any | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [isListening, setIsListening] = useState(false);
 
   // Adaptive Interview states
   const [targetRole, setTargetRole] = useState("AI Software Engineer");
+  const [personality, setPersonality] = useState("Friendly Recruiter");
+  const [company, setCompany] = useState("");
   const [adaptiveState, setAdaptiveState] = useState<any>(null);
   const [adaptiveHistory, setAdaptiveHistory] = useState<any[]>([]);
   const [adaptiveReport, setAdaptiveReport] = useState<any | null>(null);
@@ -199,7 +202,7 @@ export default function InterviewHub() {
     
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch(`http://127.0.0.1:8000/interview/adaptive/start?target_role=${encodeURIComponent(targetRole)}`, {
+      const res = await fetch(`http://127.0.0.1:8000/interview/adaptive/start?target_role=${encodeURIComponent(targetRole)}&personality=${encodeURIComponent(personality)}&company=${encodeURIComponent(company)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
       });
@@ -249,6 +252,41 @@ export default function InterviewHub() {
       }
     }
   };
+
+  const startSpeechRecognition = () => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Speech Recognition not supported in this browser. Please use Chrome or Safari.");
+        return;
+      }
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setUserInput(transcript);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    }
+  };
+
 
   const startInterview = async () => {
     setReport(null);
@@ -602,6 +640,14 @@ export default function InterviewHub() {
                   <span className="text-[10px] text-zinc-500 font-bold uppercase">Target Job Role</span>
                   <span className="text-xs font-semibold text-zinc-200">{targetRole}</span>
                 </div>
+                <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase">Interviewer Personality</span>
+                  <span className="text-xs font-semibold text-amber-400">{adaptiveState?.personality || personality}</span>
+                </div>
+                <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase">Target Company Style</span>
+                  <span className="text-xs font-semibold text-zinc-200">{adaptiveState?.company || company || "None (General)"}</span>
+                </div>
                 
                 {activeInterview && adaptiveState && (
                   <>
@@ -666,19 +712,52 @@ export default function InterviewHub() {
                 </p>
 
                 {activeMode === "adaptive" && (
-                  <div className="mt-4 flex flex-col gap-2 max-w-xs mx-auto text-left w-full">
-                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Select Target Job Role</label>
-                    <select
-                      value={targetRole}
-                      onChange={(e) => setTargetRole(e.target.value)}
-                      className="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
-                    >
-                      <option value="AI Software Engineer">AI Software Engineer</option>
-                      <option value="Data Scientist / Analyst">Data Scientist / Analyst</option>
-                      <option value="Frontend Web Developer">Frontend Web Developer</option>
-                      <option value="Backend Developer">Backend Developer</option>
-                      <option value="Fullstack Software Engineer">Fullstack Software Engineer</option>
-                    </select>
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-left w-full max-w-2xl mx-auto">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Target Job Role</label>
+                      <select
+                        value={targetRole}
+                        onChange={(e) => setTargetRole(e.target.value)}
+                        className="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer w-full"
+                      >
+                        <option value="AI Software Engineer">AI Software Engineer</option>
+                        <option value="Data Scientist / Analyst">Data Scientist / Analyst</option>
+                        <option value="Frontend Web Developer">Frontend Web Developer</option>
+                        <option value="Backend Developer">Backend Developer</option>
+                        <option value="Fullstack Software Engineer">Fullstack Software Engineer</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Interviewer Personality</label>
+                      <select
+                        value={personality}
+                        onChange={(e) => setPersonality(e.target.value)}
+                        className="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer w-full"
+                      >
+                        <option value="Friendly Recruiter">Friendly Recruiter</option>
+                        <option value="Corporate HR">Corporate HR</option>
+                        <option value="Startup Founder">Startup Founder</option>
+                        <option value="Technical Lead">Technical Lead</option>
+                        <option value="Stress Interviewer">Stress Interviewer</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Company Style</label>
+                      <select
+                        value={company}
+                        onChange={(e) => setCompany(e.target.value)}
+                        className="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer w-full"
+                      >
+                        <option value="">General (None)</option>
+                        <option value="Google">Google</option>
+                        <option value="Amazon">Amazon</option>
+                        <option value="Razorpay">Razorpay</option>
+                        <option value="NVIDIA">NVIDIA</option>
+                        <option value="Microsoft">Microsoft</option>
+                      </select>
+                    </div>
                   </div>
                 )}
               </div>
@@ -729,6 +808,17 @@ export default function InterviewHub() {
 
                 <div className="flex gap-2 border-t border-zinc-800 pt-3 mt-3">
                   <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSendMessage(); }} placeholder="Answer query..." className="flex-1 bg-zinc-950 border border-zinc-850 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500" />
+                  <button
+                    onClick={startSpeechRecognition}
+                    className={`p-2.5 rounded-xl border transition-all flex items-center justify-center ${
+                      isListening
+                        ? "bg-rose-600 border-rose-500 text-white animate-pulse"
+                        : "bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
+                    }`}
+                    title="Speak answer"
+                  >
+                    <Mic className="w-4 h-4" />
+                  </button>
                   <button onClick={handleSendMessage} className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"><Send className="w-4 h-4" /></button>
                 </div>
               </div>
@@ -891,12 +981,22 @@ export default function InterviewHub() {
                 </div>
               </div>
 
-              {/* Behavior Analysis critique */}
-              <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-2">
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Interview Behavior Analysis</span>
-                <p className="text-xs text-zinc-400 leading-relaxed font-normal p-1">
-                  {adaptiveReport.behavior_analysis}
-                </p>
+              {/* Behavior & Recruiter Notes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-2">
+                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Interview Behavior Analysis</span>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-normal p-1">
+                    {adaptiveReport.behavior_analysis}
+                  </p>
+                </div>
+
+                <div className="p-6 bg-amber-950/10 border border-amber-500/20 rounded-2xl flex flex-col gap-2 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/5 rounded-full blur-2xl" />
+                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider block border-b border-amber-900/30 pb-2">What the Recruiter Wrote (Internal Memo)</span>
+                  <p className="text-xs text-amber-200/80 italic font-medium leading-relaxed font-serif p-1 whitespace-pre-wrap">
+                    "{adaptiveReport.recruiter_notes}"
+                  </p>
+                </div>
               </div>
 
               {/* Improvement Plan */}
@@ -940,6 +1040,42 @@ export default function InterviewHub() {
                   </div>
                 </div>
               </div>
+
+              {/* Turn-by-Turn Replay Panel */}
+              {adaptiveReport.replay && adaptiveReport.replay.length > 0 && (
+                <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
+                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Turn-by-Turn Interview Replay</span>
+                  <div className="flex flex-col gap-4">
+                    {adaptiveReport.replay.map((item: any, idx: number) => (
+                      <details key={idx} className="group bg-zinc-950/40 border border-zinc-850 rounded-xl overflow-hidden transition-all duration-350">
+                        <summary className="p-4 flex justify-between items-center cursor-pointer text-xs font-bold text-zinc-200 select-none hover:bg-zinc-900/40">
+                          <span className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-indigo-600/20 text-indigo-400 text-[10px] flex items-center justify-center font-bold">
+                              Q{idx + 1}
+                            </span>
+                            <span className="truncate max-w-[280px] sm:max-w-md md:max-w-xl">{item.question}</span>
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-zinc-400 group-open:rotate-90 transition-transform" />
+                        </summary>
+                        <div className="p-4 border-t border-zinc-900 bg-zinc-950/20 flex flex-col gap-4 text-xs">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] text-indigo-400 font-bold uppercase">Your Answer</span>
+                            <p className="text-zinc-300 bg-zinc-950/60 p-3 rounded-lg border border-zinc-900 whitespace-pre-wrap">{item.answer || "No response provided."}</p>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] text-rose-400 font-bold uppercase">AI Critique</span>
+                            <p className="text-zinc-300 bg-zinc-950/60 p-3 rounded-lg border border-zinc-900">{item.feedback}</p>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] text-emerald-400 font-bold uppercase">Suggested Better Answer</span>
+                            <p className="text-zinc-300 bg-zinc-950/60 p-3 rounded-lg border border-zinc-900 font-normal leading-relaxed">{item.suggested_better_answer}</p>
+                          </div>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

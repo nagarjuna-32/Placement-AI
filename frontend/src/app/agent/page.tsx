@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Sparkles, 
   Send, 
@@ -13,20 +13,15 @@ import {
   ChevronRight, 
   Compass, 
   Globe,
-  Award
+  Award,
+  AlertTriangle,
+  FolderKanban,
+  Briefcase
 } from "lucide-react";
-
-interface RecommendedItem {
-  title: string;
-  channel?: string;
-  platform?: string;
-  duration: string;
-  url: string;
-}
 
 export default function CareerAgentPage() {
   const [messages, setMessages] = useState([
-    { sender: "ai", text: "Hello! I am your AI Career Agent Mentor. I monitor your interview evaluations, code sandbox tests, and resume keywords. How can I guide you today?" }
+    { sender: "ai", text: "Hello! I am your AI Career Coach. I'm loading your placement data and evaluation history to customize our session..." }
   ]);
   const [inputVal, setInputVal] = useState("");
   const [topicInput, setTopicInput] = useState("React Server Components");
@@ -37,6 +32,85 @@ export default function CareerAgentPage() {
   const [role, setRole] = useState("AI Software Engineer");
   const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [orchestratorLogs, setOrchestratorLogs] = useState<string[]>([]);
+  
+  // Coach Directive states
+  const [coachDirective, setCoachDirective] = useState<any | null>(null);
+  const [loadingDirective, setLoadingDirective] = useState(true);
+
+  // Fetch coach directive on load
+  useEffect(() => {
+    async function fetchCoachDirective() {
+      try {
+        const token = localStorage.getItem("token") || "mock_token";
+        const res = await fetch("http://127.0.0.1:8000/career-agent/coach-directive", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setCoachDirective(data);
+          const greeting = `Welcome back! I've synchronized your mock score trends and resume skills. I detected some skill gaps in: ${data.weak_topics.join(", ")}. Let's target these study goals: ${data.next_goals.join(" ")}. Check out your recommended projects and job listings below!`;
+          setMessages([
+            { sender: "ai", text: greeting }
+          ]);
+        } else {
+          setMockDirective();
+        }
+      } catch (err) {
+        setMockDirective();
+      } finally {
+        setLoadingDirective(false);
+      }
+    }
+    fetchCoachDirective();
+  }, []);
+
+  const setMockDirective = () => {
+    const mockData = {
+      weak_topics: ["SQL Query Optimization", "System Architecture Scales"],
+      next_goals: [
+        "Master database transaction isolation levels and B-Tree indexing.",
+        "Design caching strategies utilizing Redis for high throughput API gateways."
+      ],
+      recommended_projects: [
+        "Construct a high-performance transactional SQL ledger with Redis cache layers.",
+        "Implement a custom asynchronous task scheduler from scratch."
+      ],
+      recommended_certs: [
+        "Microsoft Certified: Power BI Data Analyst Associate",
+        "AWS Certified Solutions Architect - Associate"
+      ],
+      recommended_jobs: [
+        {
+          title: "Backend Python Developer",
+          company: "Razorpay",
+          location: "Remote",
+          type: "full-time",
+          mode: "remote",
+          salary: "₹12L - ₹18L",
+          match_score: 85,
+          missing_skills: ["AWS", "Git"],
+          why_matches: "Proficiency in FastAPI and database schemas maps to Razorpay payment engines.",
+          apply_url: "https://www.naukri.com"
+        },
+        {
+          title: "AI Software Engineer",
+          company: "Google",
+          location: "Bangalore, India",
+          type: "full-time",
+          mode: "hybrid",
+          salary: "₹24L - ₹32L",
+          match_score: 92,
+          missing_skills: ["Docker", "Kubernetes"],
+          why_matches: "Matches your deep learning and FastAPI experience.",
+          apply_url: "https://www.linkedin.com/jobs"
+        }
+      ]
+    };
+    setCoachDirective(mockData);
+    setMessages([
+      { sender: "ai", text: `Welcome back! I've loaded your profile directives. Focus on bridging gaps in SQL optimization and System Design. Let's work on: ${mockData.next_goals[0]}` }
+    ]);
+  };
 
   const triggerOrchestratedMarketSearch = async () => {
     setIsOrchestrating(true);
@@ -75,16 +149,6 @@ export default function CareerAgentPage() {
             ),
             professional_bio: data.linkedin_optimization.headline
           });
-        }
-        
-        if (data.market_intelligence) {
-          setNetworking(prev => ({
-            ...prev,
-            events: [
-              ...prev.events,
-              { name: `Market Demand: ${data.market_intelligence.demand_index}`, type: "Trend", date: `Salary: ${data.market_intelligence.average_salary}` }
-            ]
-          }));
         }
       } else {
         setOrchestratorLogs(prev => [...prev, "Server responded with error. Running local simulator..."]);
@@ -138,50 +202,21 @@ export default function CareerAgentPage() {
     }, 250);
   };
 
-  const [recommendations, setRecommendations] = useState<any>({
-    courses: [
-      { title: "Deep Learning Specialization", platform: "Coursera (Andrew Ng)", duration: "3 Months", url: "https://coursera.org" },
-      { title: "AWS Solutions Architect Certificate", platform: "Udemy", duration: "2 Months", url: "https://udemy.com" }
-    ],
-    videos: [
-      { title: "PyTorch Tutorial for Deep Learning in Python", channel: "Aladdin Persson", duration: "6 Hours", url: "https://youtube.com" },
-      { title: "FastAPI Web App Development Guide", channel: "Coding with Rohan", duration: "3 Hours", url: "https://youtube.com" }
-    ],
-    certs: ["Google Professional Machine Learning Engineer", "AWS Certified Cloud Practitioner"]
-  });
-
-  const [networking, setNetworking] = useState({
-    recruiters: [
-      { name: "Sarah Jenkins", company: "Google Tech Recruiting", role: "Senior Talent Acquisition", url: "https://linkedin.com" },
-      { name: "Rahul Verma", company: "Razorpay HR Team", role: "Lead Talent Partner", url: "https://linkedin.com" },
-      { name: "Amit Saxena", company: "Nvidia Technical Recruitment", role: "University Recruiter", url: "https://linkedin.com" }
-    ],
-    hackathons: [
-      { name: "Smart India Hackathon 2026", platform: "Unstop", date: "July 12, 2026", url: "https://unstop.com" },
-      { name: "Gemini Generative AI Hackathon", platform: "Google Developers", date: "June 25, 2026", url: "https://devpost.com" }
-    ],
-    events: [
-      { name: "AWS Cloud Day Bangalore", type: "Conference", date: "June 18, 2026" },
-      { name: "FastAPI Creator Webinar", type: "Virtual Event", date: "June 22, 2026" }
-    ]
-  });
-
   const handleSendMessage = () => {
     if (!inputVal.trim()) return;
     const newLog = [...messages, { sender: "user", text: inputVal }];
     setMessages(newLog);
     setInputVal("");
 
-    // Simulate AI Career coach advice
     setTimeout(() => {
-      let reply = "I've reviewed your request. To optimize your placement chances, focus on resolving your containerization skill gaps. Adding Docker details to your Quiz project description should be your immediate next action.";
+      let reply = "I've reviewed your query. Based on your evaluations, I suggest completing the 'Construct a high-performance transactional SQL ledger' project. It will improve your technical viva scores in databases.";
       const txt = inputVal.toLowerCase();
       if (txt.includes("cert") || txt.includes("course")) {
-        reply = "I recommend enrolling in the Deep Learning Specialization by Andrew Ng on Coursera. It directly addresses the foundational PyTorch and neural network skills lacking in your resume profile.";
-      } else if (txt.includes("linkedin") || txt.includes("branding")) {
-        reply = "You can use the LinkedIn Branding tool on the right! Enter a study topic, and I will generate structured professional post text for you to publish.";
-      } else if (txt.includes("hackathon") || txt.includes("event") || txt.includes("recruiter")) {
-        reply = "Check out the Networking Assistant panel below. It recommends connecting with Sarah Jenkins from Google and enrolling in the upcoming Gemini Generative AI Hackathon.";
+        reply = `I recommend taking the: ${coachDirective?.recommended_certs[0] || "AWS Solutions Architect certificate"}. It directly addresses your target certifications roadmap.`;
+      } else if (txt.includes("weak") || txt.includes("skill") || txt.includes("gap")) {
+        reply = `Your active weak areas from past evaluations are: ${coachDirective?.weak_topics.join(", ") || "SQL optimization"}. Focus on the study goals in the top directive panel.`;
+      } else if (txt.includes("job") || txt.includes("recommend")) {
+        reply = `I have matched some top job roles for you, including: ${coachDirective?.recommended_jobs[0]?.title || "Backend Developer"} at ${coachDirective?.recommended_jobs[0]?.company || "Razorpay"}. See direct application links at the bottom.`;
       }
       setMessages(prev => [...prev, { sender: "ai", text: reply }]);
     }, 750);
@@ -209,7 +244,6 @@ export default function CareerAgentPage() {
         generateBrandingFallback();
       }
     } catch (e) {
-      console.log("Offline: Generating branding stubs client-side.");
       generateBrandingFallback();
     } finally {
       setGeneratingBranding(false);
@@ -222,7 +256,7 @@ export default function CareerAgentPage() {
         `🚀 Excited to share my latest learning milestone in #${topicInput.replace(/\s+/g, "")}!\n\n` +
         `I have been diving deep into backend architecture pipelines, optimization metrics, and database design. ` +
         `Building scalable systems requires a deliberate focus on system latency, code structure, and security controls.\n\n` +
-        `As I build my engineering background as an aspiring ${role}, I'm keen to connect with recruiters and technical leaders working on next-gen backend tools. ` +
+        `As I build my engineering background as an aspiring ${role}, I'm keen to connect with recruiters and technical leaders working on next-gen tools. ` +
         `Check out my profile or drop a comment! #SoftwareEngineering #TechCareer #DevWorkflows`
       ),
       professional_bio: (
@@ -253,7 +287,7 @@ export default function CareerAgentPage() {
         <div className="text-left">
           <h1 className="text-3xl font-extrabold tracking-tight">AI Career Agent Mentor</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Your personal career coach. Synthesize branding posts, explore networking connections, and check certified learning paths.
+            Your premium career coach. Review personalized directives, generate branding logs, and get direct job application links.
           </p>
         </div>
         
@@ -308,6 +342,53 @@ export default function CareerAgentPage() {
         </div>
       ) : null}
 
+      {/* Coach Directive Panel */}
+      {coachDirective && (
+        <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4 text-left relative overflow-hidden shadow-lg">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl" />
+          <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+            <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
+            <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wider">AI Career Coach Directives & Memory</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">Active Weak Topics (Need Attention)</span>
+              <div className="flex flex-wrap gap-2 mt-1.5">
+                {coachDirective.weak_topics.map((wt: string, idx: number) => (
+                  <span key={idx} className="px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                    {wt}
+                  </span>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Target Study Objectives</span>
+              <ul className="flex flex-col gap-2 mt-1.5">
+                {coachDirective.next_goals.map((goal: string, idx: number) => (
+                  <li key={idx} className="text-xs text-zinc-300 flex items-start gap-1.5 leading-relaxed">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 mt-1.5" />
+                    <span>{goal}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Recommended Certifications</span>
+              <ul className="flex flex-col gap-2 mt-1.5">
+                {coachDirective.recommended_certs.map((cert: string, idx: number) => (
+                  <li key={idx} className="text-xs text-zinc-300 flex items-start gap-1.5 leading-relaxed">
+                    <Award className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>{cert}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Left column Chat Agent */}
         <div className="p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col justify-between h-[450px]">
@@ -345,22 +426,22 @@ export default function CareerAgentPage() {
           {/* Quick buttons */}
           <div className="flex gap-2 py-2 overflow-x-auto">
             <button 
-              onClick={() => setInputVal("What is my next recommended action?")}
+              onClick={() => setInputVal("Recommend a project based on my weak topics?")}
               className="text-[9px] bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 px-2 py-1 rounded text-zinc-400 shrink-0 font-semibold"
             >
-              Next actions?
+              Recommend projects?
             </button>
             <button 
-              onClick={() => setInputVal("Recommend a certification or course")}
+              onClick={() => setInputVal("What certifications should I prepare next?")}
               className="text-[9px] bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 px-2 py-1 rounded text-zinc-400 shrink-0 font-semibold"
             >
-              Recommend courses?
+              Prepare certifications?
             </button>
             <button 
-              onClick={() => setInputVal("Suggest recruiters to connect with")}
+              onClick={() => setInputVal("Show my matched job recommendation listings")}
               className="text-[9px] bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 px-2 py-1 rounded text-zinc-400 shrink-0 font-semibold"
             >
-              Network recruiter?
+              Match jobs?
             </button>
           </div>
 
@@ -396,7 +477,7 @@ export default function CareerAgentPage() {
                   <select 
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
-                    className="bg-zinc-950 border border-zinc-850 p-2 rounded-lg text-zinc-300 focus:outline-none"
+                    className="bg-zinc-950 border border-zinc-850 p-2 rounded-lg text-zinc-300 focus:outline-none cursor-pointer"
                   >
                     <option value="AI Software Engineer">AI Software Engineer</option>
                     <option value="Data Analyst">Data Analyst</option>
@@ -471,106 +552,65 @@ export default function CareerAgentPage() {
         </div>
       </div>
 
-      {/* Recommended Courses and Networking Panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recommended Learning */}
-        <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-          <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase block border-b border-zinc-800 pb-2">
-            AI Learning Recommendation Engine
-          </span>
+      {/* Recommended Projects and Job Matches */}
+      {coachDirective && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Projects & Practice */}
+          <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
+            <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase block border-b border-zinc-800 pb-2">
+              Targeted Portfolio Projects
+            </span>
 
-          <div className="flex flex-col gap-3">
-            {recommendations.courses.map((c: any, idx: number) => (
-              <div key={idx} className="p-3 bg-zinc-950/50 border border-zinc-900 rounded-xl flex justify-between items-start text-left gap-4">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/15 px-1.5 py-0.5 rounded font-bold uppercase">Course</span>
-                    <h4 className="text-xs font-bold text-zinc-200 leading-normal">{c.title}</h4>
+            <div className="flex flex-col gap-3">
+              {coachDirective.recommended_projects.map((proj: string, idx: number) => (
+                <div key={idx} className="p-3 bg-zinc-950/50 border border-zinc-900 rounded-xl flex items-start text-left gap-3.5 relative overflow-hidden">
+                  <div className="p-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/15 rounded-lg shrink-0 mt-0.5">
+                    <FolderKanban className="w-4 h-4" />
                   </div>
-                  <span className="text-[10px] text-zinc-500 font-medium">Platform: {c.platform} • Duration: {c.duration}</span>
-                </div>
-                <a 
-                  href={c.url} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="text-[10px] text-indigo-400 hover:text-white font-bold flex items-center gap-0.5 shrink-0 mt-0.5"
-                >
-                  Start <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            ))}
-
-            {recommendations.videos.map((v: any, idx: number) => (
-              <div key={idx} className="p-3 bg-zinc-950/50 border border-zinc-900 rounded-xl flex justify-between items-start text-left gap-4">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] bg-red-500/10 text-red-400 border border-red-500/15 px-1.5 py-0.5 rounded font-bold uppercase">YouTube</span>
-                    <h4 className="text-xs font-bold text-zinc-200 leading-normal">{v.title}</h4>
+                  <div className="flex flex-col gap-1 flex-1">
+                    <h4 className="text-xs font-bold text-zinc-200 leading-normal">{proj}</h4>
+                    <span className="text-[10px] text-zinc-500 font-medium">Resolves weak skills detected in past technical mocks.</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 font-medium">Channel: {v.channel} • Video: {v.duration}</span>
-                </div>
-                <a 
-                  href={v.url} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="text-[10px] text-indigo-400 hover:text-white font-bold flex items-center gap-0.5 shrink-0 mt-0.5"
-                >
-                  Watch <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Networking Panel */}
-        <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-          <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase block border-b border-zinc-800 pb-2">
-            Networking & Events Coordinator
-          </span>
-
-          <div className="flex flex-col gap-3 text-xs text-left">
-            <span className="font-bold text-zinc-300 block mb-1">Recruiter Connect Recommendations:</span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {networking.recruiters.map((r, idx) => (
-                <div key={idx} className="p-2.5 bg-zinc-950/50 border border-zinc-900 rounded-xl flex justify-between items-center">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-bold text-zinc-200">{r.name}</span>
-                    <span className="text-[9px] text-zinc-500">{r.company} • {r.role}</span>
-                  </div>
-                  <a 
-                    href={r.url} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="p-1 hover:bg-zinc-900 text-indigo-400 hover:text-white rounded-lg border border-zinc-850"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                  </a>
                 </div>
               ))}
             </div>
+          </div>
 
-            <span className="font-bold text-zinc-300 block mb-1 border-t border-zinc-900 pt-3 mt-1">Recommended Hackathons & Events:</span>
-            <div className="flex flex-col gap-2">
-              {networking.hackathons.map((h, idx) => (
-                <div key={idx} className="p-2.5 bg-zinc-950/50 border border-zinc-900 rounded-xl flex justify-between items-center">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-bold text-zinc-200 leading-normal">{h.name}</span>
-                    <span className="text-[9px] text-zinc-500">Platform: {h.platform} • Date: {h.date}</span>
+          {/* Job Matches */}
+          <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
+            <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase block border-b border-zinc-800 pb-2">
+              Matched Job Openings
+            </span>
+
+            <div className="flex flex-col gap-3">
+              {coachDirective.recommended_jobs.map((job: any, idx: number) => (
+                <div key={idx} className="p-3 bg-zinc-950/50 border border-zinc-900 rounded-xl flex justify-between items-start text-left gap-4">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[9px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/15 px-1.5 py-0.5 rounded font-bold uppercase">
+                        {job.match_score}% Match
+                      </span>
+                      <h4 className="text-xs font-bold text-zinc-200 leading-normal">{job.title}</h4>
+                    </div>
+                    <span className="text-[10px] text-zinc-400 font-medium">{job.company} • {job.location} • {job.salary}</span>
+                    <span className="text-[9px] text-zinc-500 leading-relaxed font-normal mt-1 block">
+                      {job.why_matches} {job.missing_skills.length > 0 && `Missing: ${job.missing_skills.join(", ")}`}
+                    </span>
                   </div>
                   <a 
-                    href={h.url} 
+                    href={job.apply_url} 
                     target="_blank" 
                     rel="noreferrer"
-                    className="text-[10px] text-indigo-400 hover:text-white font-bold flex items-center gap-0.5"
+                    className="text-[10px] text-indigo-400 hover:text-white font-bold flex items-center gap-0.5 shrink-0 mt-0.5 bg-indigo-600/10 border border-indigo-500/15 px-2.5 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
                   >
-                    Register <ChevronRight className="w-3 h-3" />
+                    Apply <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               ))}
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

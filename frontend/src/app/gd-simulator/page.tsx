@@ -30,9 +30,12 @@ export default function GroupDiscussionRoom() {
   const [userInput, setUserInput] = useState("");
   const [report, setReport] = useState<any | null>(null);
   const [activeSpeaker, setActiveSpeaker] = useState<string | null>(null);
+  const [webcamActive, setWebcamActive] = useState(false);
+  const [isListening, setIsListening] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const topics = [
     "Is AI replacing software developers?",
@@ -80,6 +83,10 @@ export default function GroupDiscussionRoom() {
   useEffect(() => {
     return () => {
       clearDiscussionInterval();
+      if (videoRef.current && videoRef.current.srcObject) {
+        const mediaStream = videoRef.current.srcObject as MediaStream;
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
     };
   }, []);
 
@@ -97,11 +104,68 @@ export default function GroupDiscussionRoom() {
     }
   };
 
+  const startMedia = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setWebcamActive(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        videoRef.current.play().catch(e => console.log("Play failed: ", e));
+      }
+    } catch (err) {
+      console.warn("Media devices blocked:", err);
+    }
+  };
+
+  const stopMedia = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const mediaStream = videoRef.current.srcObject as MediaStream;
+      mediaStream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setWebcamActive(false);
+  };
+
+  const startSpeechRecognition = () => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Speech Recognition not supported in this browser. Please use Chrome or Safari.");
+        return;
+      }
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setUserInput(transcript);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    }
+  };
+
   const startDiscussion = () => {
     setActiveDiscussion(true);
     setMessages([]);
     setReport(null);
     clearDiscussionInterval();
+    startMedia();
 
     // Trigger initial message from Priya
     let msgIdx = 0;
@@ -148,6 +212,7 @@ export default function GroupDiscussionRoom() {
     clearDiscussionInterval();
     setActiveDiscussion(false);
     setActiveSpeaker(null);
+    stopMedia();
 
     // Compute grading report
     // Score based on whether user sent messages (participation)
@@ -234,6 +299,32 @@ export default function GroupDiscussionRoom() {
                 <option key={idx} value={t}>{t}</option>
               ))}
             </select>
+          </div>
+
+          {/* User Live Feed (Webcam Stream) */}
+          <div className="flex flex-col gap-2 border-t border-zinc-800/50 pt-3 mt-1">
+            <span className="text-xs font-semibold text-zinc-400 text-left">Your Feed (Live)</span>
+            <div className="w-full flex items-center justify-center">
+              <div className="w-28 h-28 rounded-full border-2 border-indigo-500 overflow-hidden relative bg-zinc-950 flex items-center justify-center shadow-lg">
+                {webcamActive ? (
+                  <video 
+                    ref={videoRef} 
+                    className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" 
+                    autoPlay 
+                    muted 
+                    playsInline 
+                  />
+                ) : (
+                  <div className="text-[10px] text-zinc-500 text-center px-2">Camera Off</div>
+                )}
+                {isListening && (
+                  <span className="absolute bottom-1 right-1 flex h-3.5 w-3.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-500"></span>
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* AI Participants List */}
@@ -340,6 +431,18 @@ export default function GroupDiscussionRoom() {
                 onKeyDown={(e) => { if (e.key === "Enter") handleInterject(); }}
                 className="flex-1 bg-zinc-950 border border-zinc-850 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 placeholder-zinc-600 disabled:opacity-50"
               />
+              <button
+                disabled={!activeDiscussion}
+                onClick={startSpeechRecognition}
+                className={`p-2.5 rounded-xl border transition-all flex items-center justify-center ${
+                  isListening
+                    ? "bg-rose-600 border-rose-500 text-white animate-pulse"
+                    : "bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-50"
+                }`}
+                title="Speak argument"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
               <button
                 disabled={!activeDiscussion}
                 onClick={handleInterject}

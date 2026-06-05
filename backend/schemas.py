@@ -229,6 +229,14 @@ class AdaptiveState(BaseModel):
     consecutive_correct: int
     consecutive_wrong: int
     scores: Dict[str, float]
+    personality: Optional[str] = "Friendly Recruiter"
+    company: Optional[str] = None
+
+class AdaptiveReplayItem(BaseModel):
+    question: str
+    answer: str
+    feedback: str
+    suggested_better_answer: str
 
 class AdaptiveNextRequest(BaseModel):
     target_role: str
@@ -249,9 +257,20 @@ class AdaptiveReport(BaseModel):
     recommended_projects: List[str]
     practice_questions: List[str]
     readiness_score: int
+    recruiter_notes: str
+    replay: List[AdaptiveReplayItem]
 
 class AdaptiveNextResponse(BaseModel):
     next_question: Optional[str] = None
     is_finished: bool
     updated_state: AdaptiveState
     report: Optional[AdaptiveReport] = None
+
+# Career Coach schemas
+class CoachDirective(BaseModel):
+    weak_topics: List[str]
+    next_goals: List[str]
+    recommended_projects: List[str]
+    recommended_certs: List[str]
+    recommended_jobs: List[Dict[str, Any]]
+

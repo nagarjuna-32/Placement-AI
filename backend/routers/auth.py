@@ -114,7 +114,7 @@ def seed_database(db: Session = Depends(database.get_db)):
         )
         db.add(recruiter)
     
-    # Add some jobs
+    # Add some jobs matching all specified platforms
     db.query(models.JobMatch).delete()
     jobs = [
         models.JobMatch(
@@ -129,7 +129,7 @@ def seed_database(db: Session = Depends(database.get_db)):
             match_score=92,
             missing_skills=["Docker", "Kubernetes"],
             why_matches="Your resume highlights experience in Machine Learning, Python, and FastAPI which matches 3 out of 5 core tech requirements.",
-            apply_url="https://linkedin.com/jobs"
+            apply_url="https://www.linkedin.com/jobs"
         ),
         models.JobMatch(
             title="Backend Python Developer",
@@ -143,7 +143,7 @@ def seed_database(db: Session = Depends(database.get_db)):
             match_score=85,
             missing_skills=["AWS", "Git"],
             why_matches="Strong proficiency in FastAPI and database queries matches Razorpay's transactional service demands.",
-            apply_url="https://naukri.com"
+            apply_url="https://www.naukri.com"
         ),
         models.JobMatch(
             title="Machine Learning Intern",
@@ -158,6 +158,48 @@ def seed_database(db: Session = Depends(database.get_db)):
             missing_skills=["C++", "CUDA"],
             why_matches="Your project experience in Deep Learning and PyTorch demonstrates strong foundation for AI acceleration.",
             apply_url="https://unstop.com"
+        ),
+        models.JobMatch(
+            title="React Frontend Developer",
+            company="Microsoft",
+            description="Build premium client interfaces, interactive roadmaps, and custom dashboard components using Next.js, React, and TypeScript.",
+            location="Hyderabad, India",
+            type="full-time",
+            mode="hybrid",
+            salary="₹18L - ₹25L",
+            required_skills=["React", "JavaScript", "TypeScript", "HTML5", "CSS3", "Next.js"],
+            match_score=80,
+            missing_skills=["TypeScript", "Next.js"],
+            why_matches="Your frontend skills in React and JavaScript align well with the team's engineering stack.",
+            apply_url="https://in.indeed.com"
+        ),
+        models.JobMatch(
+            title="Software Development Intern",
+            company="Startup Inc",
+            description="Accelerate development of next-gen SaaS portals and API microservices using FastAPI, React, and SQL.",
+            location="Remote",
+            type="internship",
+            mode="remote",
+            salary="₹25k/month",
+            required_skills=["FastAPI", "React", "SQL", "HTML/CSS"],
+            match_score=88,
+            missing_skills=["React"],
+            why_matches="FastAPI and database integration capabilities match this remote internship's core needs.",
+            apply_url="https://internshala.com"
+        ),
+        models.JobMatch(
+            title="Full Stack Engineer",
+            company="Amazon",
+            description="Design and manage massive, distributed e-commerce backend APIs and reactive dashboards.",
+            location="Bangalore, India",
+            type="full-time",
+            mode="onsite",
+            salary="₹22L - ₹30L",
+            required_skills=["Python", "SQL", "React", "Docker", "AWS", "FastAPI"],
+            match_score=75,
+            missing_skills=["Docker", "AWS"],
+            why_matches="A robust background in full stack Python and SQL makes you a strong candidate.",
+            apply_url="https://www.foundit.in"
         )
     ]
     db.bulk_save_objects(jobs)
