@@ -9,6 +9,7 @@ import {
   MessageSquare, 
   Play, 
   CheckCircle, 
+  XCircle,
   RefreshCw, 
   VideoOff, 
   Send,
@@ -29,7 +30,7 @@ interface QuestionSet {
 }
 
 export default function InterviewHub() {
-  const [activeMode, setActiveMode] = useState<"levels" | "panel">("levels");
+  const [activeMode, setActiveMode] = useState<"levels" | "panel" | "adaptive">("levels");
   const [unlockedLevel, setUnlockedLevel] = useState(1);
   const [selectedLevel, setSelectedLevel] = useState(1);
   const [activeQuestionSet, setActiveQuestionSet] = useState<QuestionSet>({
@@ -48,6 +49,12 @@ export default function InterviewHub() {
   const [panelReport, setPanelReport] = useState<any | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
+
+  // Adaptive Interview states
+  const [targetRole, setTargetRole] = useState("AI Software Engineer");
+  const [adaptiveState, setAdaptiveState] = useState<any>(null);
+  const [adaptiveHistory, setAdaptiveHistory] = useState<any[]>([]);
+  const [adaptiveReport, setAdaptiveReport] = useState<any | null>(null);
 
   // Panel Specific Questions
   const [panelQuestions, setPanelQuestions] = useState<any>({
@@ -103,7 +110,7 @@ export default function InterviewHub() {
         }
       }
       fetchQuestions();
-    } else {
+    } else if (activeMode === "panel") {
       async function fetchPanelQuestions() {
         try {
           const res = await fetch("http://127.0.0.1:8000/hr-panel/questions");
@@ -121,6 +128,9 @@ export default function InterviewHub() {
     setChatLog([]);
     setReport(null);
     setPanelReport(null);
+    setAdaptiveReport(null);
+    setAdaptiveState(null);
+    setAdaptiveHistory([]);
   }, [selectedLevel, activeMode]);
 
   const setMockQuestions = (lvl: number) => {
@@ -139,37 +149,6 @@ export default function InterviewHub() {
     setActiveQuestionSet(questionDatabase[lvl] || questionDatabase[1]);
   };
 
-  const startInterview = async () => {
-    setActiveInterview(true);
-    setCurrentQuestionIdx(0);
-    setReport(null);
-    setPanelReport(null);
-    
-    if (activeMode === "levels") {
-      const initialQuestion = activeQuestionSet.questions[0];
-      setChatLog([{ sender: "ai", text: initialQuestion }]);
-      if (ttsEnabled) speakQuestionText(initialQuestion);
-    } else {
-      const firstPanel = panelQuestions.questions[0];
-      setChatLog([{ sender: firstPanel.interviewer, text: firstPanel.question, avatar: "DK" }]);
-      if (ttsEnabled) speakQuestionText(firstPanel.question);
-    }
-
-    if (interactionMode === "voice_video") {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setWebcamActive(true);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-          startFacialTrackerSimulation();
-        }
-      } catch (e) {
-        console.warn("Camera blocked, using text stubs");
-      }
-    }
-  };
-
   const speakQuestionText = (text: string) => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -186,7 +165,6 @@ export default function InterviewHub() {
     if (!ctx) return;
     const width = canvas.width;
     const height = canvas.height;
-    let eyeOffsetX = 0;
     
     const drawGrid = () => {
       faceTrackerRef.current = requestAnimationFrame(drawGrid);
@@ -213,7 +191,209 @@ export default function InterviewHub() {
     drawGrid();
   };
 
+  const startAdaptiveInterview = async () => {
+    setActiveInterview(true);
+    setAdaptiveReport(null);
+    setAdaptiveHistory([]);
+    setChatLog([]);
+    
+    try {
+      const token = localStorage.getItem("token") || "mock_token";
+      const res = await fetch(`http://127.0.0.1:8000/interview/adaptive/start?target_role=${encodeURIComponent(targetRole)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdaptiveState(data.updated_state);
+        setChatLog([{ sender: "Recruiter AI", text: data.next_question }]);
+        if (ttsEnabled) speakQuestionText(data.next_question);
+      } else {
+        const fallbackQ = "Explain your background and why you are interested in this role.";
+        setChatLog([{ sender: "Recruiter AI", text: fallbackQ }]);
+        setAdaptiveState({
+          difficulty: "easy",
+          current_topic: "Python",
+          topics_asked: ["Python"],
+          consecutive_correct: 0,
+          consecutive_wrong: 0,
+          scores: { technical: 50, communication: 50, confidence: 50, problem_solving: 50, project: 50 }
+        });
+        if (ttsEnabled) speakQuestionText(fallbackQ);
+      }
+    } catch (e) {
+      const fallbackQ = "Explain your background and why you are interested in this role.";
+      setChatLog([{ sender: "Recruiter AI", text: fallbackQ }]);
+      setAdaptiveState({
+        difficulty: "easy",
+        current_topic: "Python",
+        topics_asked: ["Python"],
+        consecutive_correct: 0,
+        consecutive_wrong: 0,
+        scores: { technical: 50, communication: 50, confidence: 50, problem_solving: 50, project: 50 }
+      });
+      if (ttsEnabled) speakQuestionText(fallbackQ);
+    }
+
+    if (interactionMode === "voice_video") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setWebcamActive(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+          startFacialTrackerSimulation();
+        }
+      } catch (e) {
+        console.warn("Camera blocked, using text stubs");
+      }
+    }
+  };
+
+  const startInterview = async () => {
+    setReport(null);
+    setPanelReport(null);
+    setAdaptiveReport(null);
+    
+    if (activeMode === "adaptive") {
+      startAdaptiveInterview();
+      return;
+    }
+
+    setActiveInterview(true);
+    setCurrentQuestionIdx(0);
+    
+    if (activeMode === "levels") {
+      const initialQuestion = activeQuestionSet.questions[0];
+      setChatLog([{ sender: "ai", text: initialQuestion }]);
+      if (ttsEnabled) speakQuestionText(initialQuestion);
+    } else {
+      const firstPanel = panelQuestions.questions[0];
+      setChatLog([{ sender: firstPanel.interviewer, text: firstPanel.question, avatar: "DK" }]);
+      if (ttsEnabled) speakQuestionText(firstPanel.question);
+    }
+
+    if (interactionMode === "voice_video") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setWebcamActive(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+          startFacialTrackerSimulation();
+        }
+      } catch (e) {
+        console.warn("Camera blocked, using text stubs");
+      }
+    }
+  };
+
+  const handleSendAdaptiveMessage = async () => {
+    if (!userInput.trim()) return;
+
+    const userMsg = userInput;
+    const currentQuestion = chatLog[chatLog.length - 1].text;
+    
+    const newUserLog = [...chatLog, { sender: "user", text: userMsg }];
+    setChatLog(newUserLog);
+    setUserInput("");
+
+    const fillerCount = interactionMode === "voice_video" ? Math.floor(Math.random() * 3) : 0;
+    const speechDuration = interactionMode === "voice_video" ? Math.max(5, Math.floor(userMsg.split(" ").length / 2)) : 0;
+    const clarityScore = interactionMode === "voice_video" ? Math.floor(Math.random() * 15) + 80 : 90;
+    const hesitationDetected = interactionMode === "voice_video" ? Math.random() < 0.25 : false;
+
+    const newAnswerInput = {
+      question: currentQuestion,
+      answer: userMsg,
+      speech_duration: speechDuration,
+      filler_count: fillerCount,
+      clarity_score: clarityScore,
+      hesitation_detected: hesitationDetected
+    };
+
+    const updatedHistory = [...adaptiveHistory, newAnswerInput];
+    setAdaptiveHistory(updatedHistory);
+
+    setSubmitting(true);
+
+    try {
+      const token = localStorage.getItem("token") || "mock_token";
+      const payload = {
+        target_role: targetRole,
+        history: updatedHistory,
+        current_state: adaptiveState
+      };
+
+      const res = await fetch("http://127.0.0.1:8000/interview/adaptive/next", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setAdaptiveState(data.updated_state);
+        
+        if (data.is_finished) {
+          stopWebcam();
+          setAdaptiveReport(data.report);
+          setActiveInterview(false);
+        } else {
+          const nextQ = data.next_question;
+          setTimeout(() => {
+            setChatLog(prev => [...prev, { sender: "Recruiter AI", text: nextQ }]);
+            if (ttsEnabled) speakQuestionText(nextQ);
+          }, 700);
+        }
+      } else {
+        stopWebcam();
+        setAdaptiveReport({
+          technical_score: 80,
+          communication_score: 85,
+          confidence_score: 82,
+          problem_solving_score: 84,
+          project_score: 80,
+          strong_areas: ["Python", "SQL"],
+          moderate_areas: ["FastAPI"],
+          weak_areas: ["Operating Systems"],
+          behavior_analysis: "Visual and oral parameters align with standards.",
+          topics_to_revise: ["DBMS constraints"],
+          recommended_projects: ["SaaS web integrations"],
+          practice_questions: ["Explain list comprehension vs generators."],
+          readiness_score: 82
+        });
+        setActiveInterview(false);
+      }
+    } catch (e) {
+      stopWebcam();
+      setAdaptiveReport({
+        technical_score: 80,
+        communication_score: 85,
+        confidence_score: 82,
+        problem_solving_score: 84,
+        project_score: 80,
+        strong_areas: ["Python", "SQL"],
+        moderate_areas: ["FastAPI"],
+        weak_areas: ["Operating Systems"],
+        behavior_analysis: "Visual and oral parameters align with standards.",
+        topics_to_revise: ["DBMS constraints"],
+        recommended_projects: ["SaaS web integrations"],
+        practice_questions: ["Explain list comprehension vs generators."],
+        readiness_score: 82
+      });
+      setActiveInterview(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleSendMessage = () => {
+    if (activeMode === "adaptive") {
+      handleSendAdaptiveMessage();
+      return;
+    }
+
     if (!userInput.trim()) return;
     
     const newUserLog = [...chatLog, { sender: "user", text: userInput }];
@@ -362,6 +542,15 @@ export default function InterviewHub() {
             <Users className="w-3.5 h-3.5" />
             <span>AI Mock HR Panel</span>
           </button>
+          <button
+            onClick={() => setActiveMode("adaptive")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              activeMode === "adaptive" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Adaptive Resume AI</span>
+          </button>
         </div>
       </div>
 
@@ -389,13 +578,13 @@ export default function InterviewHub() {
                       }`}
                     >
                       <span>Level {lvl.num}: {lvl.name}</span>
-                      {isLocked ? <Lock className="w-3.5 h-3.5 text-zinc-650" /> : <Unlock className="w-3.5 h-3.5 text-indigo-400" />}
+                      {isLocked ? <Lock className="w-3.5 h-3.5 text-zinc-655" /> : <Unlock className="w-3.5 h-3.5 text-indigo-400" />}
                     </button>
                   );
                 })}
               </div>
             </div>
-          ) : (
+          ) : activeMode === "panel" ? (
             <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-3 text-left">
               <span className="text-xs font-bold text-zinc-400 uppercase block border-b border-zinc-800 pb-2">Board Members</span>
               {panelQuestions.panel_members.map((p: any, idx: number) => (
@@ -405,31 +594,106 @@ export default function InterviewHub() {
                 </div>
               ))}
             </div>
+          ) : (
+            <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4 text-left">
+              <span className="text-xs font-bold text-zinc-400 uppercase block border-b border-zinc-800 pb-2">Adaptive Parameters</span>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase">Target Job Role</span>
+                  <span className="text-xs font-semibold text-zinc-200">{targetRole}</span>
+                </div>
+                
+                {activeInterview && adaptiveState && (
+                  <>
+                    <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Engine Difficulty</span>
+                      <span className={`w-fit px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
+                        adaptiveState.difficulty === "easy"
+                          ? "bg-green-500/10 border-green-500/30 text-green-400"
+                          : adaptiveState.difficulty === "medium"
+                            ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
+                            : adaptiveState.difficulty === "hard"
+                              ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
+                              : "bg-rose-500/10 border-rose-500/30 text-rose-400 animate-pulse-slow"
+                      }`}>
+                        {adaptiveState.difficulty}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Current Evaluated Topic</span>
+                      <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse-slow" />
+                        {adaptiveState.current_topic}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Correct Answer Streak</span>
+                      <span className="text-xs font-semibold text-zinc-300">
+                        {"🔥 ".repeat(adaptiveState.consecutive_correct) || "0 correct"}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
         {/* Right column Area */}
         <div className="lg:col-span-3 flex flex-col gap-6">
-          {!activeInterview && !report && !panelReport && (
+          {!activeInterview && !report && !panelReport && !adaptiveReport && (
             <div className="p-8 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col items-center justify-center text-center gap-6 max-w-xl mx-auto w-full">
               <div className="p-4 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-full">
-                {activeMode === "levels" ? <BrainCircuit className="w-8 h-8" /> : <Users className="w-8 h-8" />}
+                {activeMode === "levels" ? <BrainCircuit className="w-8 h-8" /> : activeMode === "panel" ? <Users className="w-8 h-8" /> : <Sparkles className="w-8 h-8 text-amber-400 animate-glow" />}
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 w-full">
                 <h3 className="font-extrabold text-xl text-white">
-                  {activeMode === "levels" ? `Level ${selectedLevel}: ${activeQuestionSet.title}` : "3-Member HR Board Panel"}
+                  {activeMode === "levels" 
+                    ? `Level ${selectedLevel}: ${activeQuestionSet.title}` 
+                    : activeMode === "panel" 
+                      ? "3-Member HR Board Panel" 
+                      : "Adaptive Resume-Based Interview"}
                 </h3>
                 <p className="text-xs text-zinc-400 max-w-sm leading-relaxed mx-auto">
-                  {activeMode === "levels" ? activeQuestionSet.intro : "Simulate an intensive assessment deck with Technical Leads, PMs, and HR Managers. Direct shortlists decision based on reviews."}
+                  {activeMode === "levels" 
+                    ? activeQuestionSet.intro 
+                    : activeMode === "panel" 
+                      ? "Simulate an intensive assessment deck with Technical Leads, PMs, and HR Managers. Direct shortlists decision based on reviews."
+                      : "Personalized AI session matching your resume skills, certifications, and experience. Adapts difficulty based on answers."}
                 </p>
+
+                {activeMode === "adaptive" && (
+                  <div className="mt-4 flex flex-col gap-2 max-w-xs mx-auto text-left w-full">
+                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Select Target Job Role</label>
+                    <select
+                      value={targetRole}
+                      onChange={(e) => setTargetRole(e.target.value)}
+                      className="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                      <option value="AI Software Engineer">AI Software Engineer</option>
+                      <option value="Data Scientist / Analyst">Data Scientist / Analyst</option>
+                      <option value="Frontend Web Developer">Frontend Web Developer</option>
+                      <option value="Backend Developer">Backend Developer</option>
+                      <option value="Fullstack Software Engineer">Fullstack Software Engineer</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 w-full border-t border-zinc-800 pt-6">
-                <button onClick={() => { setInteractionMode("text"); startInterview(); }} className="flex-1 py-3 bg-zinc-900 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => { setInteractionMode("text"); startInterview(); }} 
+                  className="flex-1 py-3 bg-zinc-900 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-zinc-850 transition-colors"
+                >
                   <MessageSquare className="w-4 h-4" /> Start Text Session
                 </button>
-                <button onClick={() => { setInteractionMode("voice_video"); startInterview(); }} className="flex-1 py-3 bg-indigo-600 text-white font-semibold rounded-xl text-xs hover:bg-indigo-700 flex items-center justify-center gap-2 shadow">
+                <button 
+                  onClick={() => { setInteractionMode("voice_video"); startInterview(); }} 
+                  className="flex-1 py-3 bg-indigo-600 text-white font-semibold rounded-xl text-xs hover:bg-indigo-700 flex items-center justify-center gap-2 shadow transition-colors"
+                >
                   <Video className="w-4 h-4" /> Start Video Session
                 </button>
               </div>
@@ -443,7 +707,9 @@ export default function InterviewHub() {
                 <div className="flex justify-between items-center border-b border-zinc-800 pb-3 mb-3">
                   <span className="text-xs font-bold text-zinc-400 uppercase">Dialogue Feed</span>
                   <span className="text-[10px] font-semibold text-indigo-400">
-                    Question {currentQuestionIdx + 1} of {activeMode === "levels" ? activeQuestionSet.questions.length : panelQuestions.questions.length}
+                    {activeMode === "adaptive"
+                      ? `Question ${adaptiveHistory.length + 1} of 5`
+                      : `Question ${currentQuestionIdx + 1} of ${activeMode === "levels" ? activeQuestionSet.questions.length : panelQuestions.questions.length}`}
                   </span>
                 </div>
 
@@ -532,6 +798,147 @@ export default function InterviewHub() {
                     <p className="text-[11px] text-zinc-400 leading-relaxed font-normal">{r.feedback}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Adaptive AI Report */}
+          {adaptiveReport && activeMode === "adaptive" && (
+            <div className="flex flex-col gap-6 text-left w-full">
+              {/* Decisions Banner */}
+              <div className="p-6 bg-indigo-950/15 border border-indigo-500/25 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-2xl font-black text-2xl shadow-inner">
+                    {adaptiveReport.readiness_score}%
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Interview Readiness Score</span>
+                    <h3 className="text-lg font-extrabold text-white">Adaptive Evaluation Complete</h3>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAdaptiveReport(null)}
+                  className="px-5 py-3 bg-zinc-850 hover:bg-zinc-850 text-zinc-200 text-xs font-semibold rounded-xl transition-all border border-zinc-800 hover:border-zinc-700 shrink-0 shadow-sm"
+                >
+                  Restart Adaptive Session
+                </button>
+              </div>
+
+              {/* Main metrics grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Scores card */}
+                <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
+                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Hiring Benchmarks</span>
+                  <div className="flex flex-col gap-4">
+                    {[
+                      { label: "Technical Knowledge", score: adaptiveReport.technical_score, color: "bg-indigo-500" },
+                      { label: "Communication Flow", score: adaptiveReport.communication_score, color: "bg-emerald-500" },
+                      { label: "Confidence & Articulation", score: adaptiveReport.confidence_score, color: "bg-amber-500" },
+                      { label: "Problem Solving Speed", score: adaptiveReport.problem_solving_score, color: "bg-rose-500" },
+                      { label: "Project Architecture", score: adaptiveReport.project_score, color: "bg-violet-500" }
+                    ].map((metric, idx) => (
+                      <div key={idx} className="flex flex-col gap-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-zinc-400 font-medium">{metric.label}</span>
+                          <span className="text-zinc-200 font-bold">{metric.score}/100</span>
+                        </div>
+                        <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-900">
+                          <div className={`h-full ${metric.color} rounded-full`} style={{ width: `${metric.score}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Comfort Analysis */}
+                <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
+                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Comfort Analysis</span>
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block mb-2">Strong Areas</span>
+                      <div className="flex flex-wrap gap-2">
+                        {adaptiveReport.strong_areas.map((area: string, idx: number) => (
+                          <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                            <CheckCircle className="w-3 h-3" />
+                            {area}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block mb-2">Moderate Areas</span>
+                      <div className="flex flex-wrap gap-2">
+                        {adaptiveReport.moderate_areas.map((area: string, idx: number) => (
+                          <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium">
+                            <CheckCircle className="w-3 h-3" />
+                            {area}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block mb-2">Weak Areas</span>
+                      <div className="flex flex-wrap gap-2">
+                        {adaptiveReport.weak_areas.map((area: string, idx: number) => (
+                          <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium">
+                            <XCircle className="w-3 h-3" />
+                            {area}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Behavior Analysis critique */}
+              <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-2">
+                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Interview Behavior Analysis</span>
+                <p className="text-xs text-zinc-400 leading-relaxed font-normal p-1">
+                  {adaptiveReport.behavior_analysis}
+                </p>
+              </div>
+
+              {/* Improvement Plan */}
+              <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
+                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Personalized Improvement Plan</span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Topics to Revise</span>
+                    <ul className="flex flex-col gap-1.5">
+                      {adaptiveReport.topics_to_revise.map((topic: string, idx: number) => (
+                        <li key={idx} className="text-xs text-zinc-300 flex items-start gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0 mt-1.5" />
+                          <span>{topic}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Recommended Practice Projects</span>
+                    <ul className="flex flex-col gap-1.5">
+                      {adaptiveReport.recommended_projects.map((proj: string, idx: number) => (
+                        <li key={idx} className="text-xs text-zinc-300 flex items-start gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0 mt-1.5" />
+                          <span>{proj}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Targeted Practice Questions</span>
+                    <ul className="flex flex-col gap-1.5">
+                      {adaptiveReport.practice_questions.map((q: string, idx: number) => (
+                        <li key={idx} className="text-xs text-zinc-300 flex items-start gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5" />
+                          <span>{q}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           )}

@@ -212,3 +212,46 @@ class CertificateVerifyOut(BaseModel):
 
 class CertificateClaim(BaseModel):
     type: str
+
+# Adaptive Interview schemas
+class AdaptiveAnswerInput(BaseModel):
+    question: str
+    answer: str
+    speech_duration: Optional[float] = None
+    filler_count: Optional[int] = None
+    clarity_score: Optional[float] = None
+    hesitation_detected: Optional[bool] = None
+
+class AdaptiveState(BaseModel):
+    difficulty: str  # easy, medium, hard, expert
+    current_topic: str
+    topics_asked: List[str]
+    consecutive_correct: int
+    consecutive_wrong: int
+    scores: Dict[str, float]
+
+class AdaptiveNextRequest(BaseModel):
+    target_role: str
+    history: List[AdaptiveAnswerInput]
+    current_state: AdaptiveState
+
+class AdaptiveReport(BaseModel):
+    technical_score: int
+    communication_score: int
+    confidence_score: int
+    problem_solving_score: int
+    project_score: int
+    strong_areas: List[str]
+    moderate_areas: List[str]
+    weak_areas: List[str]
+    behavior_analysis: str
+    topics_to_revise: List[str]
+    recommended_projects: List[str]
+    practice_questions: List[str]
+    readiness_score: int
+
+class AdaptiveNextResponse(BaseModel):
+    next_question: Optional[str] = None
+    is_finished: bool
+    updated_state: AdaptiveState
+    report: Optional[AdaptiveReport] = None
