@@ -129,3 +129,29 @@ def get_roadmap(
     db.refresh(new_roadmap)
     
     return new_roadmap
+
+@router.get("/subscription", response_model=schemas.SubscriptionUsageOut)
+def get_user_subscription_status(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    usage = db.query(models.SubscriptionUsage).filter(models.SubscriptionUsage.user_id == current_user.id).first()
+    if not usage:
+        usage = models.SubscriptionUsage(
+            user_id=current_user.id,
+            resume_analyses_limit=3,
+            interviews_limit=3,
+            gd_limit=3
+        )
+        db.add(usage)
+        db.commit()
+    return {
+        "plan_tier": current_user.subscription_tier or "free",
+        "resume_analyses_used": usage.resume_analyses_used,
+        "interviews_used": usage.interviews_used,
+        "gd_used": usage.gd_used,
+        "resume_analyses_limit": usage.resume_analyses_limit,
+        "interviews_limit": usage.interviews_limit,
+        "gd_limit": usage.gd_limit,
+        "expiry_date": usage.expiry_date
+    }

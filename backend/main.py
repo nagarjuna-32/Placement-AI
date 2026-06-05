@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+import os
 import models
 from database import engine
 import database
@@ -16,8 +19,11 @@ from routers import (
     market, 
     hr_panel,
     orchestrator,
-    certificates
+    certificates,
+    payments,
+    reports
 )
+from utils.rate_limit import RateLimitingMiddleware
 
 # Create all database tables
 models.Base.metadata.create_all(bind=engine)
@@ -38,7 +44,22 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Configure CORS so Next.js frontend can communicate with FastAPI
+# Secure HTTP Headers Middleware
+class SecureHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "no-referrer-when-downgrade"
+        response.headers["Content-Security-Policy"] = "default-src 'self' * data: blob: 'unsafe-inline' 'unsafe-eval' ws: wss:"
+        return response
+
+# Register Middleware in proper ASGI execution order
+app.add_middleware(SecureHeadersMiddleware)
+app.add_middleware(RateLimitingMiddleware, limit=100, window=60) # 100 requests per minute
+
+# Configure CORS
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -55,6 +76,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount local uploader static directory
+os.makedirs("static/uploads", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Include Routers
 app.include_router(auth.router)
 app.include_router(resume.router)
@@ -69,6 +94,8 @@ app.include_router(market.router)
 app.include_router(hr_panel.router)
 app.include_router(orchestrator.router)
 app.include_router(certificates.router)
+app.include_router(payments.router)
+app.include_router(reports.router)
 
 @app.get("/")
 def read_root():

@@ -21,9 +21,19 @@ class User(Base):
     referral_code = Column(String, unique=True, nullable=True)
     referred_by = Column(String, nullable=True)
     portfolio_data = Column(JSON, nullable=True)
+    
+    # Production Auth & Soft-Delete Fields
+    is_verified = Column(Boolean, default=False)
+    verification_code = Column(String, nullable=True)
+    reset_token = Column(String, nullable=True)
+    is_deleted = Column(Boolean, default=False)
 
     resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
     interviews = relationship("InterviewAttempt", back_populates="user", cascade="all, delete-orphan")
+    subscription_usage = relationship("SubscriptionUsage", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    payment_logs = relationship("PaymentLog", back_populates="user", cascade="all, delete-orphan")
+    activities = relationship("UserActivity", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     roadmaps = relationship("UserRoadmap", back_populates="user", cascade="all, delete-orphan")
     applications = relationship("JobApplication", back_populates="user", cascade="all, delete-orphan")
     github_analyses = relationship("GithubAnalysis", back_populates="user", cascade="all, delete-orphan")
@@ -45,6 +55,7 @@ class Resume(Base):
     projects_analysis = Column(JSON, nullable=True)
     missing_keywords = Column(JSON, nullable=True)
     recommendations = Column(JSON, nullable=True)
+    is_deleted = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="resumes")
 
@@ -75,6 +86,7 @@ class InterviewAttempt(Base):
     feedback = Column(Text, nullable=True)
     video_analysis = Column(JSON, nullable=True)       # expressions, eye contact, etc.
     communication_metrics = Column(JSON, nullable=True) # speed, filler words, pronunciation, confidence
+    is_deleted = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="interviews")
 
@@ -156,3 +168,58 @@ class Certificate(Base):
     verification_url = Column(String, nullable=False)
 
     user = relationship("User", back_populates="certificates")
+
+class SubscriptionUsage(Base):
+    __tablename__ = "subscription_usages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, index=True, nullable=False)
+    resume_analyses_used = Column(Integer, default=0)
+    interviews_used = Column(Integer, default=0)
+    gd_used = Column(Integer, default=0)
+    
+    resume_analyses_limit = Column(Integer, default=3)
+    interviews_limit = Column(Integer, default=3)
+    gd_limit = Column(Integer, default=3)
+    
+    expiry_date = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="subscription_usage")
+
+class PaymentLog(Base):
+    __tablename__ = "payment_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    order_id = Column(String, nullable=False, index=True)
+    payment_id = Column(String, nullable=True, index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, default="INR")
+    status = Column(String, default="created")  # created, captured, failed
+    plan_tier = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="payment_logs")
+
+class UserActivity(Base):
+    __tablename__ = "user_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action_name = Column(String, nullable=False)
+    details = Column(Text, nullable=True)
+    ip_address = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="activities")
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    token = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="refresh_tokens")

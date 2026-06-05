@@ -100,6 +100,20 @@ def submit_attempt(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db)
 ):
+    # Enforce plan limits
+    usage = db.query(models.SubscriptionUsage).filter(models.SubscriptionUsage.user_id == current_user.id).first()
+    if not usage:
+        usage = models.SubscriptionUsage(user_id=current_user.id)
+        db.add(usage)
+        db.commit()
+        db.refresh(usage)
+        
+    if usage.interviews_used >= usage.interviews_limit:
+        raise HTTPException(
+            status_code=403,
+            detail=f"You have reached your subscription tier limit ({usage.interviews_limit} mock interviews). Please upgrade your plan."
+        )
+
     # Save the interview attempt
     new_attempt = models.InterviewAttempt(
         user_id=current_user.id,
@@ -121,6 +135,9 @@ def submit_attempt(
             "grammar": 90
         }
     )
+    
+    # Increment usage counter
+    usage.interviews_used += 1
     
     # Check levels and update user progression
     # Awards XP
@@ -390,6 +407,19 @@ def start_adaptive_interview(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db)
 ):
+    # Enforce plan limits
+    usage = db.query(models.SubscriptionUsage).filter(models.SubscriptionUsage.user_id == current_user.id).first()
+    if not usage:
+        usage = models.SubscriptionUsage(user_id=current_user.id)
+        db.add(usage)
+        db.commit()
+        db.refresh(usage)
+        
+    if usage.interviews_used >= usage.interviews_limit:
+        raise HTTPException(
+            status_code=403,
+            detail=f"You have reached your subscription tier limit ({usage.interviews_limit} mock interviews). Please upgrade your plan."
+        )
     # Fetch latest resume
     resume = db.query(models.Resume).filter(models.Resume.user_id == current_user.id).order_by(models.Resume.id.desc()).first()
     
@@ -784,6 +814,11 @@ def next_adaptive_question(
         # Award XP
         current_user.xp += 250
         current_user.streak += 1
+        
+        # Increment usage counter
+        usage = db.query(models.SubscriptionUsage).filter(models.SubscriptionUsage.user_id == current_user.id).first()
+        if usage:
+            usage.interviews_used += 1
         
         db.add(new_attempt)
         db.commit()

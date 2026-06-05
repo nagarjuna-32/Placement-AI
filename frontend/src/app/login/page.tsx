@@ -15,6 +15,9 @@ export default function LoginPage() {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotStatus, setForgotStatus] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotStep, setForgotStep] = useState<"request" | "reset">("request");
+  const [resetCode, setResetCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   const handleAutofill = (demoEmail: string, role: string) => {
     setEmail(demoEmail);
@@ -22,19 +25,38 @@ export default function LoginPage() {
     localStorage.setItem("userRole", role);
   };
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     setLoading(true);
     setError("");
-    setTimeout(() => {
-      // Mock Google Authentications
-      localStorage.setItem("token", "google_mock_token_123");
-      const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
-      document.cookie = `token=google_mock_token_123; path=/; max-age=36000; SameSite=Lax${secureFlag}`;
-      localStorage.setItem("userRole", "student");
-      window.dispatchEvent(new Event("authChanged"));
-      window.dispatchEvent(new Event("roleChanged"));
-      window.location.href = "/dashboard";
-    }, 1200);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: "google_mock_token_123" })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem("token", data.access_token);
+        if (data.refresh_token) {
+          localStorage.setItem("refreshToken", data.refresh_token);
+        }
+        const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `token=${data.access_token}; path=/; max-age=36000; SameSite=Lax${secureFlag}`;
+        
+        const role = data.user.role === "recruiter" ? "recruiter" : "student";
+        localStorage.setItem("userRole", role);
+        window.dispatchEvent(new Event("authChanged"));
+        window.dispatchEvent(new Event("roleChanged"));
+        window.location.href = role === "recruiter" ? "/recruiter" : "/dashboard";
+      } else {
+        const errData = await res.json();
+        setError(errData.detail || "Google authentication failed.");
+      }
+    } catch (err) {
+      setError("Unable to connect to backend for Google OAuth exchange.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -51,11 +73,53 @@ export default function LoginPage() {
       });
       if (res.ok) {
         setForgotStatus("Success: Reset instructions and verification code sent to your inbox!");
+        setTimeout(() => {
+          setForgotStep("reset");
+          setForgotStatus("");
+        }, 1500);
       } else {
         setForgotStatus("Error: No account matches this email address.");
       }
     } catch (err) {
       setForgotStatus("Success: Reset instructions and verification code sent to your inbox! (Offline Mode)");
+      setTimeout(() => {
+        setForgotStep("reset");
+        setForgotStatus("");
+      }, 1500);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail || !resetCode || !newPassword) return;
+    setForgotLoading(true);
+    setForgotStatus("");
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: forgotEmail,
+          token: resetCode,
+          new_password: newPassword
+        })
+      });
+      if (res.ok) {
+        setForgotStatus("Success: Password reset successfully! Closing window...");
+        setTimeout(() => {
+          setShowForgotModal(false);
+          setForgotStep("request");
+          setForgotStatus("");
+        }, 2000);
+      } else {
+        const errData = await res.json();
+        setForgotStatus("Error: " + (errData.detail || "Failed to reset password."));
+      }
+    } catch (err) {
+      setForgotStatus("Error: Unable to connect to the backend server.");
     } finally {
       setForgotLoading(false);
     }
@@ -283,7 +347,7 @@ export default function LoginPage() {
                 <Info className="w-4 h-4 text-indigo-400" />
                 Password Recovery Console
               </span>
-              <button onClick={() => setShowForgotModal(false)} className="text-zinc-500 hover:text-white transition-colors">
+              <button onClick={() => { setShowForgotModal(false); setForgotStep("request"); }} className="text-zinc-500 hover:text-white transition-colors">
                 <X className="w-4.5 h-4.5" />
               </button>
             </div>
@@ -299,34 +363,88 @@ export default function LoginPage() {
               </div>
             )}
 
-            <form onSubmit={handleForgotPassword} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-                  Confirm Registered Email
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
-                    <Mail className="h-4 w-4" />
+            {forgotStep === "request" ? (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    Confirm Registered Email
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                      <Mail className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="email"
+                      required
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-800 block w-full pl-10 pr-3 py-2.5 rounded-xl text-sm text-zinc-250 placeholder-zinc-650 focus:outline-none focus:border-indigo-500"
+                      placeholder="name@domain.com"
+                    />
                   </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {forgotLoading ? "Routing request..." : "Dispatch Recovery Email"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    Recovery Code (From logs/inbox)
+                  </label>
                   <input
-                    type="email"
+                    type="text"
                     required
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    className="bg-zinc-900 border border-zinc-800 block w-full pl-10 pr-3 py-2.5 rounded-xl text-sm text-zinc-250 placeholder-zinc-600 focus:outline-none focus:border-indigo-500"
-                    placeholder="name@domain.com"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    className="bg-zinc-900 border border-zinc-800 block w-full px-3 py-2.5 rounded-xl text-sm text-zinc-250 focus:outline-none focus:border-indigo-500"
+                    placeholder="Enter 6-digit code"
                   />
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={forgotLoading}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl active:scale-95 transition-all disabled:opacity-50"
-              >
-                {forgotLoading ? "Routing request..." : "Dispatch Recovery Email"}
-              </button>
-            </form>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    New Secure Password
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                      <Lock className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="password"
+                      required
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-800 block w-full pl-10 pr-3 py-2.5 rounded-xl text-sm text-zinc-250 focus:outline-none focus:border-indigo-500"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForgotStep("request")}
+                    className="flex-1 py-2.5 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-bold rounded-xl"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    {forgotLoading ? "Resetting..." : "Save Password"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

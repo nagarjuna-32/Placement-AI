@@ -32,6 +32,7 @@ class UserOut(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str
     user: UserOut
 
@@ -273,4 +274,45 @@ class CoachDirective(BaseModel):
     recommended_projects: List[str]
     recommended_certs: List[str]
     recommended_jobs: List[Dict[str, Any]]
+
+# Production Overhaul Addition Schemas
+class GoogleLoginRequest(BaseModel):
+    token: str
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetConfirm(BaseModel):
+    email: EmailStr
+    token: str
+    new_password: str
+
+class EmailVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
+class PaymentOrderCreate(BaseModel):
+    plan_tier: str
+    amount: float
+
+class PaymentVerification(BaseModel):
+    razorpay_payment_id: str
+    razorpay_order_id: str
+    razorpay_signature: str
+
+class SubscriptionUsageOut(BaseModel):
+    plan_tier: str
+    resume_analyses_used: int
+    interviews_used: int
+    gd_used: int
+    resume_analyses_limit: int
+    interviews_limit: int
+    gd_limit: int
+    expiry_date: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 

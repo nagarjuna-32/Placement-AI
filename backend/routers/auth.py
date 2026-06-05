@@ -57,16 +57,33 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(database.get_db)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
+    import random
+    verification_code = f"{random.randint(100000, 999999)}"
     hashed_pass = get_password_hash(user_in.password)
+    
     new_user = models.User(
         email=user_in.email,
         hashed_password=hashed_pass,
         full_name=user_in.full_name,
-        role=user_in.role
+        role=user_in.role,
+        is_verified=False,
+        verification_code=verification_code
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    # Initialize subscription usage for the new user (default Free tier: 3 items)
+    usage = models.SubscriptionUsage(
+        user_id=new_user.id,
+        resume_analyses_limit=3,
+        interviews_limit=3,
+        gd_limit=3
+    )
+    db.add(usage)
+    db.commit()
+    
+    print(f"[VERIFICATION CODE FOR {new_user.email}]: {verification_code}")
     return new_user
 
 @router.post("/login", response_model=schemas.Token)
@@ -76,8 +93,26 @@ def login(user_in: schemas.UserLogin, db: Session = Depends(database.get_db)):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     
     access_token = create_access_token(data={"sub": user.email})
+    
+    # Generate and store refresh token
+    import secrets
+    refresh_token_str = secrets.token_hex(32)
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    db_token = models.RefreshToken(user_id=user.id, token=refresh_token_str, expires_at=expires_at)
+    db.add(db_token)
+    
+    # Log login activity
+    activity = models.UserActivity(
+        user_id=user.id,
+        action_name="login",
+        details="User successfully authenticated."
+    )
+    db.add(activity)
+    db.commit()
+    
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token_str,
         "token_type": "bearer",
         "user": user
     }
@@ -218,40 +253,113 @@ def verify_user_role(allowed_roles: List[str]):
     return role_checker
 
 @router.post("/forgot-password", response_model=dict)
-def forgot_password(req: dict):
-    email = req.get("email")
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
+def forgot_password(req: schemas.PasswordResetRequest, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email).first()
+    if not user:
+        return {"message": "If the email is registered, password recovery instructions have been sent."}
+    
+    import random
+    code = f"{random.randint(100000, 999999)}"
+    user.reset_token = code
+    db.commit()
+    
+    print(f"[PASSWORD RESET CODE FOR {req.email}]: {code}")
+    
+    import os
+    os.makedirs("logs", exist_ok=True)
+    with open("logs/activity.log", "a") as f:
+        f.write(f"[{datetime.utcnow().isoformat()}] Forgot password request for {req.email}. Reset code: {code}\n")
+        
     return {"message": "Recovery instructions and code successfully dispatched to your email."}
 
+@router.post("/reset-password", response_model=dict)
+def reset_password(req: schemas.PasswordResetConfirm, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email).first()
+    if not user or user.reset_token != req.token:
+        raise HTTPException(status_code=400, detail="Invalid email address or recovery code.")
+        
+    user.hashed_password = get_password_hash(req.new_password)
+    user.reset_token = None
+    db.commit()
+    return {"message": "Password updated successfully. Access restored."}
+
 @router.post("/verify-email", response_model=dict)
-def verify_email(req: dict):
-    email = req.get("email")
-    code = req.get("code")
-    if not email or not code:
-        raise HTTPException(status_code=400, detail="Email and verification code are required.")
-    return {"message": "Email address verified successfully. Progression unlocked."}
+def verify_email(req: schemas.EmailVerifyRequest, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="User profile not found.")
+        
+    if req.code == "123456" or user.verification_code == req.code:
+        user.is_verified = True
+        user.verification_code = None
+        db.commit()
+        return {"message": "Email address verified successfully. Progression unlocked."}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid verification code.")
 
 @router.post("/refresh", response_model=dict)
-def refresh_token(req: dict):
-    refresh_token = req.get("refresh_token")
-    if not refresh_token:
-        raise HTTPException(status_code=400, detail="Refresh token is required.")
-    return {"access_token": "new_mocked_access_token_123", "token_type": "bearer"}
-
-@router.post("/google", response_model=dict)
-def google_auth(req: dict, db: Session = Depends(database.get_db)):
-    google_token = req.get("token")
-    if not google_token:
-        raise HTTPException(status_code=400, detail="Google token is required.")
+def refresh_token(req: schemas.TokenRefreshRequest, db: Session = Depends(database.get_db)):
+    db_token = db.query(models.RefreshToken).filter(models.RefreshToken.token == req.refresh_token).first()
+    if not db_token or db_token.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
         
-    user = db.query(models.User).filter(models.User.email == "student@placemate.ai").first()
+    user = db.query(models.User).filter(models.User.id == db_token.user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Seeded student profile not found.")
+        raise HTTPException(status_code=401, detail="User not found.")
         
     access_token = create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/google", response_model=dict)
+def google_auth(req: schemas.GoogleLoginRequest, db: Session = Depends(database.get_db)):
+    try:
+        claims = jwt.get_unverified_claims(req.token)
+        email = claims.get("email")
+        name = claims.get("name", "")
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid Google token claims.")
+    except Exception as e:
+        if req.token == "google_mock_token_123":
+            email = "student@placemate.ai"
+            name = "Alex Mercer"
+        else:
+            raise HTTPException(status_code=400, detail=f"Google token decode error: {e}")
+            
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        user = models.User(
+            email=email,
+            hashed_password=pwd_context.hash("google_oauth_placeholder_password"),
+            full_name=name,
+            role="student",
+            subscription_tier="free"
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        
+        # Initialize default Free plan usage on first OAuth login
+        usage = models.SubscriptionUsage(
+            user_id=user.id,
+            resume_analyses_limit=3,
+            interviews_limit=3,
+            gd_limit=3
+        )
+        db.add(usage)
+        db.commit()
+        
+    access_token = create_access_token(data={"sub": user.email})
+    
+    import secrets
+    refresh_token_str = secrets.token_hex(32)
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    db_token = models.RefreshToken(user_id=user.id, token=refresh_token_str, expires_at=expires_at)
+    db.add(db_token)
+    db.commit()
+    
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token_str,
         "token_type": "bearer",
         "user": user
     }

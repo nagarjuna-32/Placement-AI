@@ -80,6 +80,18 @@ export default function StudentDashboard() {
   const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [orchestratorLogs, setOrchestratorLogs] = useState<string[]>([]);
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [subscription, setSubscription] = useState<any>({
+    plan_tier: "free",
+    resume_analyses_used: 0,
+    interviews_used: 0,
+    gd_used: 0,
+    resume_analyses_limit: 3,
+    interviews_limit: 3,
+    gd_limit: 3,
+    expiry_date: null
+  });
 
   // SVG Chart Mock Data
   const mockTrends = [
@@ -247,6 +259,14 @@ export default function StudentDashboard() {
           const data = await alertsRes.json();
           setAlerts(data);
         }
+
+        const subRes = await fetch("http://127.0.0.1:8000/profile/subscription", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (subRes.ok) {
+          const data = await subRes.json();
+          setSubscription(data);
+        }
       } catch (err) {
         console.log("FastAPI offline, using mock stubs:", err);
         setMockAlerts();
@@ -297,51 +317,125 @@ export default function StudentDashboard() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const downloadReport = () => {
+  const downloadReport = async () => {
     setDownloading(true);
-    setTimeout(() => {
-      const reportText = `
-========================================
-PLACEMATE AI - PLACEMENT READINESS REPORT
-========================================
-Candidate: Alex Mercer
-Email: student@placemate.ai
-Date Generated: ${new Date().toLocaleDateString()}
-
-1. PERFORMANCE METRICS
-----------------------
-Career Health Score: ${readiness.readiness_score}/100
-Status: ${readiness.status}
-Resume ATS Score: ${readiness.resume_score}/100
-Communication Coaching Score: ${readiness.communication_score}/100
-Technical Fundamentals Score: ${readiness.technical_score}/100
-Coding Execution Score: ${readiness.coding_score}/150
-
-2. APPLICATION TRACKING STATISTICS
----------------------------------
-Total Job Applications Submitted: ${trackerStats.total_applications}
-Landed Placement Offers: ${trackerStats.offers_received}
-Current Active Interview Pipelines: ${trackerStats.active_interviews}
-Success Rate: ${trackerStats.success_rate}%
-
-3. PRESCRIBED ACTION ITEMS
--------------------------
-- Review project specifications on resume to integrate measurable performance indicators.
-- Complete Speech Coach practice drills to reduce filler word counts below 2 per minute.
-- Complete Mock Interview Level 2 and Level 3 to unlock technical coding parameters.
-========================================
-      `;
-      
-      const blob = new Blob([reportText], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
+    try {
+      const token = localStorage.getItem("token") || "mock_token";
+      const res = await fetch("http://127.0.0.1:8000/reports/readiness", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        throw new Error("Unable to fetch PDF report from server.");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `PlaceMate_Career_Health_Report.txt`;
+      link.download = `PlaceMate_Placement_Readiness_Report.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+    } catch (err: any) {
+      console.error(err);
+      alert("Error: " + err.message);
+    } finally {
       setDownloading(false);
-    }, 1200);
+    }
+  };
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleUpgradePlan = async (tier: string, amount: number) => {
+    setUpgradeLoading(true);
+    try {
+      const token = localStorage.getItem("token") || "mock_token";
+      const res = await fetch("http://127.0.0.1:8000/payments/order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ plan_tier: tier, amount })
+      });
+      if (!res.ok) throw new Error("Order creation failed");
+      const order = await res.json();
+      
+      const loaded = await loadRazorpayScript();
+      if (!loaded || order.order_id.startsWith("order_mock")) {
+        alert("Running offline sandbox payment checkout...");
+        const verifyRes = await fetch("http://127.0.0.1:8000/payments/verify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            razorpay_order_id: order.order_id,
+            razorpay_payment_id: "pay_mock_123456",
+            razorpay_signature: "sig_mock_123456"
+          })
+        });
+        if (verifyRes.ok) {
+          alert(`Upgrade successful! Welcome to the ${tier.toUpperCase()} plan!`);
+          window.location.reload();
+        } else {
+          alert("Mock signature validation failed.");
+        }
+        return;
+      }
+      
+      const options = {
+        key: order.key_id,
+        amount: order.amount * 100,
+        currency: order.currency,
+        name: "PlaceMate AI",
+        description: `Upgrade to ${tier.toUpperCase()} Plan`,
+        order_id: order.order_id,
+        handler: async function (response: any) {
+          const verifyRes = await fetch("http://127.0.0.1:8000/payments/verify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            })
+          });
+          if (verifyRes.ok) {
+            alert(`Upgrade successful! Welcome to the ${tier.toUpperCase()} plan!`);
+            window.location.reload();
+          } else {
+            alert("Payment signature verification failed.");
+          }
+        },
+        prefill: {
+          name: readiness.status,
+          email: "student@placemate.ai"
+        },
+        theme: {
+          color: "#6366f1"
+        }
+      };
+      
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (e: any) {
+      alert("Checkout error: " + e.message);
+    } finally {
+      setUpgradeLoading(false);
+      setShowUpgradeModal(false);
+    }
   };
 
   const unreadAlertsCount = alerts.filter(a => !a.read).length;
@@ -548,6 +642,74 @@ Success Rate: ${trackerStats.success_rate}%
           <div className="text-[8px] text-zinc-650 text-center font-bold">
             Referrals program active. 3/5 points to free tier month.
           </div>
+        </div>
+      </div>
+
+      {/* Subscription & Plan Usage */}
+      <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4 text-left">
+        <div className="flex justify-between items-center border-b border-zinc-900 pb-3">
+          <div className="flex items-center gap-2">
+            <Award className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-bold text-zinc-200 tracking-wider uppercase">
+              Subscription & Usage Statistics
+            </span>
+          </div>
+          <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full uppercase">
+            Active Plan: {subscription.plan_tier}
+          </span>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-zinc-400 font-medium">Resume Analysis Usage</span>
+              <span className="text-zinc-200 font-bold">{subscription.resume_analyses_used} / {subscription.resume_analyses_limit}</span>
+            </div>
+            <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-900">
+              <div 
+                className="h-full bg-indigo-500 rounded-full" 
+                style={{ width: `${Math.min(100, (subscription.resume_analyses_used / subscription.resume_analyses_limit) * 100)}%` }} 
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-zinc-400 font-medium">Mock Interview Usage</span>
+              <span className="text-zinc-200 font-bold">{subscription.interviews_used} / {subscription.interviews_limit}</span>
+            </div>
+            <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-900">
+              <div 
+                className="h-full bg-emerald-500 rounded-full" 
+                style={{ width: `${Math.min(100, (subscription.interviews_used / subscription.interviews_limit) * 100)}%` }} 
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-zinc-400 font-medium">Group Discussion Usage</span>
+              <span className="text-zinc-200 font-bold">{subscription.gd_used} / {subscription.gd_limit}</span>
+            </div>
+            <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-900">
+              <div 
+                className="h-full bg-amber-500 rounded-full" 
+                style={{ width: `${Math.min(100, (subscription.gd_used / subscription.gd_limit) * 100)}%` }} 
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center border-t border-zinc-900 pt-3 mt-1 text-xs">
+          <span className="text-zinc-500 font-medium">
+            Plan Expiration: {subscription.expiry_date ? new Date(subscription.expiry_date).toLocaleDateString() : "Never (Free Tier)"}
+          </span>
+          <button 
+            onClick={() => setShowUpgradeModal(true)}
+            className="text-[10px] bg-indigo-600 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors shadow shadow-indigo-600/10"
+          >
+            Upgrade Plan
+          </button>
         </div>
       </div>
 
@@ -824,6 +986,49 @@ Success Rate: ${trackerStats.success_rate}%
             </div>
             <div className="text-[9px] text-zinc-650 text-center font-bold pt-4 shrink-0 border-t border-zinc-900">
               Coordinated collaborate execution of 6 profile agents.
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Upgrade Subscription Modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowUpgradeModal(false)} />
+          <div className="relative w-full max-w-lg bg-zinc-950 border border-zinc-900 rounded-2xl p-6 shadow-2xl z-10 text-left">
+            <div className="flex justify-between items-center border-b border-zinc-900 pb-3 mb-4">
+              <span className="text-xs font-bold text-zinc-200 tracking-wider uppercase flex items-center gap-1.5">
+                <Award className="w-4 h-4 text-indigo-400" />
+                Upgrade Your PlaceMate AI Subscription
+              </span>
+              <button onClick={() => setShowUpgradeModal(false)} className="text-zinc-500 hover:text-white transition-colors">
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              {[
+                { name: "Basic", price: 99, details: "10 Resume analysis & 10 Mock Interviews / month" },
+                { name: "Pro", price: 299, details: "50 Resume analysis & 50 Mock Interviews / month" },
+                { name: "Premium", price: 699, details: "Unlimited Resume analysis & Mock Interviews / month" }
+              ].map((plan, idx) => (
+                <div key={idx} className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl flex flex-col justify-between gap-3 text-left">
+                  <div>
+                    <h4 className="font-extrabold text-sm text-white">{plan.name}</h4>
+                    <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">{plan.details}</p>
+                  </div>
+                  <div>
+                    <span className="text-lg font-bold text-indigo-400">₹{plan.price}</span>
+                    <span className="text-[9px] text-zinc-500 font-semibold">/month</span>
+                    <button
+                      disabled={upgradeLoading}
+                      onClick={() => handleUpgradePlan(plan.name.toLowerCase(), plan.price)}
+                      className="w-full mt-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[10px] font-bold rounded-lg transition-colors"
+                    >
+                      {upgradeLoading ? "Loading..." : "Purchase"}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
