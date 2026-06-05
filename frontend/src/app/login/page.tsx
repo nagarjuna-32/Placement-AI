@@ -28,7 +28,8 @@ export default function LoginPage() {
     setTimeout(() => {
       // Mock Google Authentications
       localStorage.setItem("token", "google_mock_token_123");
-      document.cookie = "token=google_mock_token_123; path=/; max-age=36000; SameSite=Lax; Secure";
+      const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `token=google_mock_token_123; path=/; max-age=36000; SameSite=Lax${secureFlag}`;
       localStorage.setItem("userRole", "student");
       window.dispatchEvent(new Event("authChanged"));
       window.dispatchEvent(new Event("roleChanged"));
@@ -79,7 +80,8 @@ export default function LoginPage() {
         localStorage.setItem("token", data.access_token);
         
         // Write the Edge-compatible HTTP-like cookie for Next.js Middleware check
-        document.cookie = `token=${data.access_token}; path=/; max-age=36000; SameSite=Lax; Secure`;
+        const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `token=${data.access_token}; path=/; max-age=36000; SameSite=Lax${secureFlag}`;
 
         const role = data.user.role === "recruiter" ? "recruiter" : "student";
         localStorage.setItem("userRole", role);
@@ -97,7 +99,8 @@ export default function LoginPage() {
       setError("Unable to connect to the backend. Logging in with offline mock profiles...");
       setTimeout(() => {
         localStorage.setItem("token", "mock_access_token_token");
-        document.cookie = "token=mock_access_token_token; path=/; max-age=36000; SameSite=Lax; Secure";
+        const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `token=mock_access_token_token; path=/; max-age=36000; SameSite=Lax${secureFlag}`;
         const role = email.includes("recruiter") ? "recruiter" : "student";
         localStorage.setItem("userRole", role);
         window.dispatchEvent(new Event("authChanged"));
