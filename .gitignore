@@ -6,6 +6,7 @@ build/
 venv/
 env/
 ENV/
+.venv/
 
 # Python Cache & Databases
 __pycache__/
