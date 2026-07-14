@@ -316,3 +316,68 @@ class SubscriptionUsageOut(BaseModel):
     class Config:
         from_attributes = True
 
+
+# ── AI Live Interview Schemas ──────────────────────────────────────────────────
+
+class ResumeInterviewQuestion(BaseModel):
+    id: int
+    level: str          # "easy" | "medium" | "hard"
+    topic: str
+    question: str
+
+class ResumeInterviewQuestionsOut(BaseModel):
+    questions: List[ResumeInterviewQuestion]
+    resume_summary: Dict[str, Any]
+
+class AnswerEvaluationRequest(BaseModel):
+    question: str
+    spoken_answer: str
+    level: str
+    topic: str
+    is_second_chance: bool = False
+
+class AnswerEvaluationOut(BaseModel):
+    verdict: str          # "correct" | "wrong" | "partial"
+    score: int
+    feedback: str
+    ai_response: str
+    follow_up_question: Optional[str] = None
+    better_answer: str
+    keyword_hits: List[str] = []
+
+class QuestionResult(BaseModel):
+    question_id: int
+    question: str
+    level: str
+    topic: str
+    spoken_answer: str
+    verdict: str
+    score: int
+    feedback: str
+    better_answer: str
+    was_second_chance: bool = False
+    expression_snapshot: Optional[Dict[str, Any]] = None
+
+class InterviewReportSave(BaseModel):
+    was_terminated: bool = False
+    termination_reason: Optional[str] = None
+    questions_results: List[QuestionResult]
+    expression_timeline: List[Dict[str, Any]]
+    communication_metrics: Dict[str, Any]
+    technical_score: int
+    communication_score: int
+    confidence_score: int
+
+class InterviewReportOut(BaseModel):
+    id: int
+    user_id: int
+    was_terminated: bool = False
+    technical_score: int
+    communication_score: int
+    confidence_score: int
+    feedback: Optional[str] = None
+    video_analysis: Optional[Dict[str, Any]] = None
+    communication_metrics: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True

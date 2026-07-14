@@ -1,1084 +1,835 @@
-"use client";
+\"use client\";
 
-import { useState, useEffect, useRef } from "react";
-import { 
-  Lock, 
-  Unlock, 
-  Video, 
-  Mic, 
-  MessageSquare, 
-  Play, 
-  CheckCircle, 
-  XCircle,
-  RefreshCw, 
-  VideoOff, 
-  Send,
-  Sparkles,
-  Smile,
-  AlertTriangle,
-  UserCheck,
-  ChevronRight,
-  BrainCircuit,
-  Eye,
-  Users
-} from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from \"react\";
+import {
+  Video, VideoOff, Mic, MicOff, PhoneOff, AlertTriangle,
+  CheckCircle, XCircle, FileX, Upload, Sparkles, ChevronRight,
+  BarChart2, MessageSquare, Brain, Eye, Smile, TrendingUp, Award, RefreshCw
+} from \"lucide-react\";
 
-interface QuestionSet {
-  title: string;
-  intro: string;
-  questions: string[];
+// ── Types ──────────────────────────────────────────────────────────────────────
+interface Question { id: number; level: string; topic: string; question: string; }
+interface ResumeSummary { ats_score: number; skills: string[]; projects: string[]; missing: string[]; }
+interface ExpressionData { confidence: number; nervousness: number; eyeContact: number; }
+interface QuestionResult {
+  question_id: number; question: string; level: string; topic: string;
+  spoken_answer: string; verdict: string; score: number; feedback: string;
+  better_answer: string; was_second_chance: boolean;
+  expression_snapshot: ExpressionData | null;
 }
 
-export default function InterviewHub() {
-  const [activeMode, setActiveMode] = useState<"levels" | "panel" | "adaptive">("levels");
-  const [unlockedLevel, setUnlockedLevel] = useState(1);
-  const [selectedLevel, setSelectedLevel] = useState(1);
-  const [activeQuestionSet, setActiveQuestionSet] = useState<QuestionSet>({
-    title: "Self Introduction",
-    intro: "Tell me about yourself, your educational background, and your career goals.",
-    questions: ["Can you introduce yourself in 2 minutes?", "Why did you choose this field?", "What are your primary interests outside of engineering?"]
-  });
+type PageState = \"loading\" | \"no_resume\" | \"setup\" | \"permissions\" | \"preparing\" | \"interview\" | \"terminated\" | \"report\";
 
-  const [activeInterview, setActiveInterview] = useState(false);
-  const [interactionMode, setInteractionMode] = useState<"text" | "voice_video">("text");
-  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
-  const [chatLog, setChatLog] = useState<Array<{ sender: string; text: string; avatar?: string }>>([]);
-  const [userInput, setUserInput] = useState("");
-  const [webcamActive, setWebcamActive] = useState(false);
-  const [report, setReport] = useState<any | null>(null);
-  const [panelReport, setPanelReport] = useState<any | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [ttsEnabled, setTtsEnabled] = useState(true);
+const LEVEL_COLORS: Record<string, string> = {
+  easy: \"text-emerald-400 bg-emerald-400/10 border-emerald-400/30\",
+  medium: \"text-amber-400 bg-amber-400/10 border-amber-400/30\",
+  hard: \"text-rose-400 bg-rose-400/10 border-rose-400/30\",
+};
+
+const PERSONALITIES = [
+  { id: \"friendly\", label: \"Friendly\", desc: \"Supportive and encouraging tone\", icon: \"😊\" },
+  { id: \"strict\", label: \"Strict\", desc: \"Professional, direct, no-nonsense\", icon: \"🎯\" },
+  { id: \"faang\", label: \"FAANG Style\", desc: \"Intense, Google/Amazon-style grilling\", icon: \"🚀\" },
+];
+
+// ── Filler word detector ───────────────────────────────────────────────────────
+const FILLER_WORDS = [\"um\", \"uh\", \"like\", \"you know\", \"basically\", \"actually\", \"literally\", \"so yeah\"];
+function countFillers(text: string) {
+  const lower = text.toLowerCase();
+  return FILLER_WORDS.reduce((acc, w) => acc + (lower.split(w).length - 1), 0);
+}
+
+// ── Simulated facial expression tracker ────────────────────────────────────────
+function simulateExpression(baseConfidence: number): ExpressionData {
+  const jitter = () => (Math.random() - 0.5) * 12;
+  const conf = Math.min(100, Math.max(10, baseConfidence + jitter()));
+  const nerv = Math.min(100, Math.max(5, 100 - conf + jitter() * 0.5));
+  const eye = Math.min(100, Math.max(20, conf * 0.9 + jitter()));
+  return { confidence: Math.round(conf), nervousness: Math.round(nerv), eyeContact: Math.round(eye) };
+}
+
+export default function AIInterviewPage() {
+  const [pageState, setPageState] = useState<PageState>(\"loading\");
+  const [resumeSummary, setResumeSummary] = useState<ResumeSummary | null>(null);
+  const [personality, setPersonality] = useState(\"friendly\");
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQIdx, setCurrentQIdx] = useState(0);
+  const [isSecondChance, setIsSecondChance] = useState(false);
+  const [results, setResults] = useState<QuestionResult[]>([]);
+  const [liveTranscript, setLiveTranscript] = useState(\"\");
+  const [aiSpeaking, setAiSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [expression, setExpression] = useState<ExpressionData>({ confidence: 70, nervousness: 30, eyeContact: 75 });
+  const [expressionTimeline, setExpressionTimeline] = useState<ExpressionData[]>([]);
+  const [totalFillers, setTotalFillers] = useState(0);
+  const [totalWords, setTotalWords] = useState(0);
+  const [webcamOn, setWebcamOn] = useState(false);
+  const [micOn, setMicOn] = useState(true);
+  const [evaluating, setEvaluating] = useState(false);
+  const [warningMsg, setWarningMsg] = useState(\"\");
+  const [report, setReport] = useState<any>(null);
 
-  // Adaptive Interview states
-  const [targetRole, setTargetRole] = useState("AI Software Engineer");
-  const [personality, setPersonality] = useState("Friendly Recruiter");
-  const [company, setCompany] = useState("");
-  const [adaptiveState, setAdaptiveState] = useState<any>(null);
-  const [adaptiveHistory, setAdaptiveHistory] = useState<any[]>([]);
-  const [adaptiveReport, setAdaptiveReport] = useState<any | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const expressionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const accumulatedAnswerRef = useRef(\"\");
+  const baseConfidenceRef = useRef(70);
 
-  // Panel Specific Questions
-  const [panelQuestions, setPanelQuestions] = useState<any>({
-    panel_members: [
-      { name: "Dinesh Kumar", role: "Tech Lead", focus: "System Design" },
-      { name: "Elena Rostova", role: "Project Manager", focus: "Delivery" },
-      { name: "Sarah Jenkins", role: "HR Manager", focus: "Culture" }
-    ],
-    questions: [
-      { interviewer: "Dinesh Kumar (Tech Lead)", question: "How would you design a caching strategy for a microservice backend serving 50,000 requests per minute? When would you invalidate keys?" },
-      { interviewer: "Elena Rostova (Project Manager)", question: "Describe a scenario where a critical client requirement changed 2 days before deployment. How did you coordinate with your team?" },
-      { interviewer: "Sarah Jenkins (HR Manager)", question: "Why do you want to transition from your current position? What are your salary expectations for this role?" }
-    ]
-  });
+  const token = typeof window !== \"undefined\" ? (localStorage.getItem(\"token\") || \"mock_token\") : \"mock_token\";
+  const API = \"http://127.0.0.1:8001\";
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const faceTrackerRef = useRef<number | null>(null);
-
-  const levels = [
-    { num: 1, name: "Self Introduction" },
-    { num: 2, name: "Communication Round" },
-    { num: 3, name: "HR Interview" },
-    { num: 4, name: "Aptitude Round" },
-    { num: 5, name: "Technical Fundamentals" },
-    { num: 6, name: "Project Viva" },
-    { num: 7, name: "Coding Interview" },
-    { num: 8, name: "Company Specific Round" },
-    { num: 9, name: "Stress Interview" },
-    { num: 10, name: "Placement Simulation" }
-  ];
-
+  // ── 1. On mount: check for resume ──────────────────────────────────────────
   useEffect(() => {
-    const savedLevel = localStorage.getItem("unlockedLevel");
-    if (savedLevel) {
-      setUnlockedLevel(Number(savedLevel));
-    }
+    checkResume();
+    return () => cleanup();
   }, []);
 
-  useEffect(() => {
-    if (activeMode === "levels") {
-      async function fetchQuestions() {
-        try {
-          const res = await fetch(`http://127.0.0.1:8001/interview/questions/${selectedLevel}`);
-          if (res.ok) {
-            const data = await res.json();
-            setActiveQuestionSet(data);
+  async function checkResume() {
+    try {
+      const res = await fetch(`${API}/resume/latest`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setResumeSummary({
+          ats_score: data.ats_score,
+          skills: data.extracted_skills || [],
+          projects: (data.projects_analysis || []).map((p: any) => p.title || \"\"),
+          missing: data.missing_keywords || []
+        });
+        setPageState(\"setup\");
+      } else {
+        setPageState(\"no_resume\");
+      }
+    } catch {
+      setPageState(\"no_resume\");
+    }
+  }
+
+  // ── 2. Start interview ──────────────────────────────────────────────────────
+  async function startInterview() {
+    setPageState(\"permissions\");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+      setWebcamOn(true);
+    } catch {
+      setWarningMsg(\"Camera/mic access denied. Interview will proceed audio-only.\");
+    }
+    setPageState(\"preparing\");
+    await fetchQuestions();
+  }
+
+  async function fetchQuestions() {
+    try {
+      const res = await fetch(`${API}/resume/interview-questions`, {
+        method: \"POST\",
+        headers: { Authorization: `Bearer ${token}`, \"Content-Type\": \"application/json\" }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQuestions(data.questions);
+        if (data.resume_summary) setResumeSummary(data.resume_summary);
+      } else {
+        setQuestions(buildFallbackQuestions(resumeSummary?.skills || []));
+      }
+    } catch {
+      setQuestions(buildFallbackQuestions(resumeSummary?.skills || []));
+    }
+    setPageState(\"interview\");
+    startExpressionTracker();
+    // Greet and ask first question
+    setTimeout(() => askQuestion(0, false), 500);
+  }
+
+  // ── 3. Expression tracker (simulated) ─────────────────────────────────────
+  function startExpressionTracker() {
+    expressionTimerRef.current = setInterval(() => {
+      const expr = simulateExpression(baseConfidenceRef.current);
+      setExpression(expr);
+    }, 800);
+  }
+
+  // ── 4. TTS — AI speaks ────────────────────────────────────────────────────
+  function speak(text: string, onEnd?: () => void) {
+    if (typeof window === \"undefined\" || !window.speechSynthesis) {
+      onEnd?.();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    setAiSpeaking(true);
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = personality === \"faang\" ? 1.1 : personality === \"strict\" ? 0.95 : 0.9;
+    utt.pitch = personality === \"friendly\" ? 1.1 : 0.9;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.name.includes(\"Google UK English Male\") || v.name.includes(\"Daniel\") || v.name.includes(\"Alex\"));
+    if (preferred) utt.voice = preferred;
+    utt.onend = () => {
+      setAiSpeaking(false);
+      onEnd?.();
+    };
+    utt.onerror = () => { setAiSpeaking(false); onEnd?.(); };
+    window.speechSynthesis.speak(utt);
+  }
+
+  // ── 5. Ask a question ─────────────────────────────────────────────────────
+  function askQuestion(idx: number, isSecond: boolean) {
+    if (idx >= questions.length) { finishInterview(); return; }
+    const q = questions[idx];
+    setCurrentQIdx(idx);
+    setIsSecondChance(isSecond);
+    setLiveTranscript(\"\");
+    accumulatedAnswerRef.current = \"\";
+    // Lower confidence when second chance
+    baseConfidenceRef.current = isSecond ? 50 : 70 + Math.random() * 20;
+
+    const intro = isSecond
+      ? `I'll give you one more chance. ${q.question}`
+      : idx === 0
+      ? `Welcome to your AI interview. I am your interviewer today. Let's begin. ${q.question}`
+      : `${q.question}`;
+
+    speak(intro, () => startListening());
+  }
+
+  // ── 6. Speech recognition ─────────────────────────────────────────────────
+  function startListening() {
+    if (typeof window === \"undefined\") return;
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { setWarningMsg(\"Speech recognition not supported. Use Chrome or Edge.\"); return; }
+
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = \"en-US\";
+    recognitionRef.current = rec;
+
+    rec.onstart = () => setIsListening(true);
+    rec.onresult = (e: any) => {
+      let interim = \"\";
+      let final = \"\";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) { final += t + \" \"; }
+        else { interim += t; }
+      }
+      if (final) {
+        accumulatedAnswerRef.current += final;
+        setTotalWords(w => w + final.split(\" \").filter(Boolean).length);
+        setTotalFillers(f => f + countFillers(final));
+        // Confidence boost when speaking
+        baseConfidenceRef.current = Math.min(85, baseConfidenceRef.current + 3);
+      }
+      setLiveTranscript(accumulatedAnswerRef.current + interim);
+
+      // Reset 2s silence timer
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        rec.stop();
+        submitAnswer(accumulatedAnswerRef.current.trim());
+      }, 2500);
+    };
+    rec.onerror = (e: any) => {
+      console.warn(\"STT error:\", e.error);
+      setIsListening(false);
+    };
+    rec.onend = () => setIsListening(false);
+    rec.start();
+  }
+
+  function stopListening() {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    setIsListening(false);
+  }
+
+  // ── 7. Submit answer & evaluate ───────────────────────────────────────────
+  async function submitAnswer(answer: string) {
+    stopListening();
+    if (!answer || answer.length < 3) answer = \"(no answer provided)\";
+    setEvaluating(true);
+    setLiveTranscript(answer);
+
+    const currentQ = questions[currentQIdx];
+    const exprSnap = { ...expression };
+    // Drop confidence when short/no answer
+    if (answer.length < 15) baseConfidenceRef.current = Math.max(20, baseConfidenceRef.current - 25);
+
+    try {
+      const res = await fetch(`${API}/interview/evaluate-answer`, {
+        method: \"POST\",
+        headers: { Authorization: `Bearer ${token}`, \"Content-Type\": \"application/json\" },
+        body: JSON.stringify({
+          question: currentQ.question,
+          spoken_answer: answer,
+          level: currentQ.level,
+          topic: currentQ.topic,
+          is_second_chance: isSecondChance
+        })
+      });
+
+      setEvaluating(false);
+      let evaluation: any;
+      if (res.ok) {
+        evaluation = await res.json();
+      } else {
+        evaluation = buildFallbackEvaluation(answer, currentQ.topic, isSecondChance);
+      }
+
+      // Save result
+      const result: QuestionResult = {
+        question_id: currentQ.id,
+        question: currentQ.question,
+        level: currentQ.level,
+        topic: currentQ.topic,
+        spoken_answer: answer,
+        verdict: evaluation.verdict,
+        score: evaluation.score,
+        feedback: evaluation.feedback,
+        better_answer: evaluation.better_answer,
+        was_second_chance: isSecondChance,
+        expression_snapshot: exprSnap
+      };
+      setResults(prev => [...prev, result]);
+      setExpressionTimeline(prev => [...prev, exprSnap]);
+
+      // Speak AI response, then decide next step
+      speak(evaluation.ai_response, () => {
+        if (evaluation.verdict === \"wrong\") {
+          if (isSecondChance) {
+            // Terminate
+            terminateInterview([...results, result]);
           } else {
-            setMockQuestions(selectedLevel);
+            // Second chance
+            setWarningMsg(\"⚠️  Second Chance — Answer this carefully!\");
+            const followUp: Question = evaluation.follow_up_question
+              ? { ...currentQ, question: evaluation.follow_up_question }
+              : currentQ;
+            // Insert follow-up at current position
+            setQuestions(prev => {
+              const next = [...prev];
+              next[currentQIdx] = followUp;
+              return next;
+            });
+            setTimeout(() => {
+              setWarningMsg(\"\");
+              askQuestion(currentQIdx, true);
+            }, 1200);
           }
-        } catch (err) {
-          setMockQuestions(selectedLevel);
-        }
-      }
-      fetchQuestions();
-    } else if (activeMode === "panel") {
-      async function fetchPanelQuestions() {
-        try {
-          const res = await fetch("http://127.0.0.1:8001/hr-panel/questions");
-          if (res.ok) {
-            const data = await res.json();
-            setPanelQuestions(data);
-          }
-        } catch (err) {
-          console.log("Using static panel questions (Offline)");
-        }
-      }
-      fetchPanelQuestions();
-    }
-    setActiveInterview(false);
-    setChatLog([]);
-    setReport(null);
-    setPanelReport(null);
-    setAdaptiveReport(null);
-    setAdaptiveState(null);
-    setAdaptiveHistory([]);
-  }, [selectedLevel, activeMode]);
-
-  const setMockQuestions = (lvl: number) => {
-    const questionDatabase: Record<number, QuestionSet> = {
-      1: {
-        title: "Self Introduction",
-        intro: "Tell me about yourself, your educational background, and your career goals.",
-        questions: ["Can you introduce yourself in 2 minutes?", "Why did you choose this field?", "What are your interests outside of engineering?"]
-      },
-      2: {
-        title: "Communication Round",
-        intro: "Speak clearly and confidently on a general topic to assess fluency and articulation.",
-        questions: ["How do you explain a complex technical concept to a non-technical manager?", "Describe a time you convinced a teammate to accept your idea.", "Why is active listening important?"]
-      }
-    };
-    setActiveQuestionSet(questionDatabase[lvl] || questionDatabase[1]);
-  };
-
-  const speakQuestionText = (text: string) => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.95;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
-
-  const startFacialTrackerSimulation = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    const drawGrid = () => {
-      faceTrackerRef.current = requestAnimationFrame(drawGrid);
-      ctx.clearRect(0, 0, width, height);
-      const cx = width / 2;
-      const cy = height / 2 - 10;
-      
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.6)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, 55, 75, 0, 0, 2 * Math.PI);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(cx - 20, cy - 15, 5, 0, 2 * Math.PI);
-      ctx.arc(cx + 20, cy - 15, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = "rgba(16, 185, 129, 0.4)";
-      ctx.fill();
-
-      ctx.fillStyle = "#10b981";
-      ctx.font = "bold 8px monospace";
-      ctx.fillText("AI TRACKING ACTIVE", cx - 40, cy - 80);
-    };
-    drawGrid();
-  };
-
-  const startAdaptiveInterview = async () => {
-    setActiveInterview(true);
-    setAdaptiveReport(null);
-    setAdaptiveHistory([]);
-    setChatLog([]);
-    
-    try {
-      const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch(`http://127.0.0.1:8001/interview/adaptive/start?target_role=${encodeURIComponent(targetRole)}&personality=${encodeURIComponent(personality)}&company=${encodeURIComponent(company)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAdaptiveState(data.updated_state);
-        setChatLog([{ sender: "Recruiter AI", text: data.next_question }]);
-        if (ttsEnabled) speakQuestionText(data.next_question);
-      } else {
-        const fallbackQ = "Explain your background and why you are interested in this role.";
-        setChatLog([{ sender: "Recruiter AI", text: fallbackQ }]);
-        setAdaptiveState({
-          difficulty: "easy",
-          current_topic: "Python",
-          topics_asked: ["Python"],
-          consecutive_correct: 0,
-          consecutive_wrong: 0,
-          scores: { technical: 50, communication: 50, confidence: 50, problem_solving: 50, project: 50 }
-        });
-        if (ttsEnabled) speakQuestionText(fallbackQ);
-      }
-    } catch (e) {
-      const fallbackQ = "Explain your background and why you are interested in this role.";
-      setChatLog([{ sender: "Recruiter AI", text: fallbackQ }]);
-      setAdaptiveState({
-        difficulty: "easy",
-        current_topic: "Python",
-        topics_asked: ["Python"],
-        consecutive_correct: 0,
-        consecutive_wrong: 0,
-        scores: { technical: 50, communication: 50, confidence: 50, problem_solving: 50, project: 50 }
-      });
-      if (ttsEnabled) speakQuestionText(fallbackQ);
-    }
-
-    if (interactionMode === "voice_video") {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setWebcamActive(true);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-          startFacialTrackerSimulation();
-        }
-      } catch (e) {
-        console.warn("Camera blocked, using text stubs");
-      }
-    }
-  };
-
-  const startSpeechRecognition = () => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert("Speech Recognition not supported in this browser. Please use Chrome or Safari.");
-        return;
-      }
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = "en-US";
-
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setUserInput(transcript);
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognition.start();
-    }
-  };
-
-
-  const startInterview = async () => {
-    setReport(null);
-    setPanelReport(null);
-    setAdaptiveReport(null);
-    
-    if (activeMode === "adaptive") {
-      startAdaptiveInterview();
-      return;
-    }
-
-    setActiveInterview(true);
-    setCurrentQuestionIdx(0);
-    
-    if (activeMode === "levels") {
-      const initialQuestion = activeQuestionSet.questions[0];
-      setChatLog([{ sender: "ai", text: initialQuestion }]);
-      if (ttsEnabled) speakQuestionText(initialQuestion);
-    } else {
-      const firstPanel = panelQuestions.questions[0];
-      setChatLog([{ sender: firstPanel.interviewer, text: firstPanel.question, avatar: "DK" }]);
-      if (ttsEnabled) speakQuestionText(firstPanel.question);
-    }
-
-    if (interactionMode === "voice_video") {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setWebcamActive(true);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-          startFacialTrackerSimulation();
-        }
-      } catch (e) {
-        console.warn("Camera blocked, using text stubs");
-      }
-    }
-  };
-
-  const handleSendAdaptiveMessage = async () => {
-    if (!userInput.trim()) return;
-
-    const userMsg = userInput;
-    const currentQuestion = chatLog[chatLog.length - 1].text;
-    
-    const newUserLog = [...chatLog, { sender: "user", text: userMsg }];
-    setChatLog(newUserLog);
-    setUserInput("");
-
-    const fillerCount = interactionMode === "voice_video" ? Math.floor(Math.random() * 3) : 0;
-    const speechDuration = interactionMode === "voice_video" ? Math.max(5, Math.floor(userMsg.split(" ").length / 2)) : 0;
-    const clarityScore = interactionMode === "voice_video" ? Math.floor(Math.random() * 15) + 80 : 90;
-    const hesitationDetected = interactionMode === "voice_video" ? Math.random() < 0.25 : false;
-
-    const newAnswerInput = {
-      question: currentQuestion,
-      answer: userMsg,
-      speech_duration: speechDuration,
-      filler_count: fillerCount,
-      clarity_score: clarityScore,
-      hesitation_detected: hesitationDetected
-    };
-
-    const updatedHistory = [...adaptiveHistory, newAnswerInput];
-    setAdaptiveHistory(updatedHistory);
-
-    setSubmitting(true);
-
-    try {
-      const token = localStorage.getItem("token") || "mock_token";
-      const payload = {
-        target_role: targetRole,
-        history: updatedHistory,
-        current_state: adaptiveState
-      };
-
-      const res = await fetch("http://127.0.0.1:8001/interview/adaptive/next", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setAdaptiveState(data.updated_state);
-        
-        if (data.is_finished) {
-          stopWebcam();
-          setAdaptiveReport(data.report);
-          setActiveInterview(false);
         } else {
-          const nextQ = data.next_question;
-          setTimeout(() => {
-            setChatLog(prev => [...prev, { sender: "Recruiter AI", text: nextQ }]);
-            if (ttsEnabled) speakQuestionText(nextQ);
-          }, 700);
+          // Correct or partial — next question
+          setWarningMsg(\"\");
+          const nextIdx = currentQIdx + 1;
+          if (nextIdx >= questions.length) {
+            finishInterview();
+          } else {
+            setTimeout(() => askQuestion(nextIdx, false), 800);
+          }
         }
-      } else {
-        stopWebcam();
-        setAdaptiveReport({
-          technical_score: 80,
-          communication_score: 85,
-          confidence_score: 82,
-          problem_solving_score: 84,
-          project_score: 80,
-          strong_areas: ["Python", "SQL"],
-          moderate_areas: ["FastAPI"],
-          weak_areas: ["Operating Systems"],
-          behavior_analysis: "Visual and oral parameters align with standards.",
-          topics_to_revise: ["DBMS constraints"],
-          recommended_projects: ["SaaS web integrations"],
-          practice_questions: ["Explain list comprehension vs generators."],
-          readiness_score: 82
-        });
-        setActiveInterview(false);
-      }
-    } catch (e) {
-      stopWebcam();
-      setAdaptiveReport({
-        technical_score: 80,
-        communication_score: 85,
-        confidence_score: 82,
-        problem_solving_score: 84,
-        project_score: 80,
-        strong_areas: ["Python", "SQL"],
-        moderate_areas: ["FastAPI"],
-        weak_areas: ["Operating Systems"],
-        behavior_analysis: "Visual and oral parameters align with standards.",
-        topics_to_revise: ["DBMS constraints"],
-        recommended_projects: ["SaaS web integrations"],
-        practice_questions: ["Explain list comprehension vs generators."],
-        readiness_score: 82
       });
-      setActiveInterview(false);
-    } finally {
-      setSubmitting(false);
+    } catch {
+      setEvaluating(false);
+      const fallback = buildFallbackEvaluation(answer, currentQ.topic, isSecondChance);
+      speak(fallback.ai_response, () => {
+        const nextIdx = currentQIdx + 1;
+        if (nextIdx >= questions.length) finishInterview();
+        else setTimeout(() => askQuestion(nextIdx, false), 800);
+      });
     }
-  };
+  }
 
-  const handleSendMessage = () => {
-    if (activeMode === "adaptive") {
-      handleSendAdaptiveMessage();
-      return;
-    }
+  // ── 8. Terminate ──────────────────────────────────────────────────────────
+  function terminateInterview(finalResults: QuestionResult[]) {
+    stopListening();
+    clearInterval(expressionTimerRef.current!);
+    setPageState(\"terminated\");
+    generateReport(finalResults, true, \"Two consecutive wrong answers\");
+  }
 
-    if (!userInput.trim()) return;
-    
-    const newUserLog = [...chatLog, { sender: "user", text: userInput }];
-    setChatLog(newUserLog);
-    setUserInput("");
+  // ── 9. Finish ─────────────────────────────────────────────────────────────
+  function finishInterview() {
+    stopListening();
+    clearInterval(expressionTimerRef.current!);
+    speak(\"Thank you for attending the interview. Your results are being calculated.\", () => {
+      generateReport(results, false, null);
+    });
+  }
 
-    const nextIndex = currentQuestionIdx + 1;
-    
-    if (activeMode === "levels") {
-      if (nextIndex < activeQuestionSet.questions.length) {
-        setCurrentQuestionIdx(nextIndex);
-        const q = activeQuestionSet.questions[nextIndex];
-        setTimeout(() => {
-          setChatLog(prev => [...prev, { sender: "ai", text: q }]);
-          if (ttsEnabled) speakQuestionText(q);
-        }, 700);
-      } else {
-        setTimeout(() => endLevelInterview(), 800);
-      }
-    } else {
-      if (nextIndex < panelQuestions.questions.length) {
-        setCurrentQuestionIdx(nextIndex);
-        const q = panelQuestions.questions[nextIndex];
-        const nextAvatar = nextIndex === 1 ? "ER" : "SJ";
-        setTimeout(() => {
-          setChatLog(prev => [...prev, { sender: q.interviewer, text: q.question, avatar: nextAvatar }]);
-          if (ttsEnabled) speakQuestionText(q.question);
-        }, 700);
-      } else {
-        setTimeout(() => endPanelInterview(), 800);
-      }
-    }
-  };
+  // ── 10. Generate & save report ────────────────────────────────────────────
+  async function generateReport(qResults: QuestionResult[], terminated: boolean, reason: string | null) {
+    const techScores = qResults.map(r => r.score);
+    const technical = terminated
+      ? Math.min(40, Math.round(techScores.reduce((a, b) => a + b, 0) / Math.max(techScores.length, 1)))
+      : Math.round(techScores.reduce((a, b) => a + b, 0) / Math.max(techScores.length, 1));
 
-  const stopWebcam = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setWebcamActive(false);
-    if (faceTrackerRef.current) cancelAnimationFrame(faceTrackerRef.current);
-  };
+    const avgConf = expressionTimeline.length
+      ? Math.round(expressionTimeline.reduce((a, e) => a + e.confidence, 0) / expressionTimeline.length)
+      : 55;
+    const confidence = terminated ? Math.min(45, avgConf) : avgConf;
 
-  const endLevelInterview = async () => {
-    setSubmitting(true);
-    stopWebcam();
-    const score = Math.floor(Math.random() * 15) + 75;
+    const fillerPenalty = Math.min(30, Math.round((totalFillers / Math.max(totalWords, 1)) * 100));
+    const communication = Math.max(20, Math.min(95, 75 - fillerPenalty + (totalWords > 100 ? 10 : 0)));
 
     const reportData = {
-      level: selectedLevel,
-      score,
-      feedback: `Completed level ${selectedLevel}. Steady communication flow. Variable speech metrics are consistent. Expand technical terminology details in coding topics.`,
-      video_analysis: { eye_contact: 88, smile_frequency: 72, posture: 92, expressions: "Attentive" },
-      communication_metrics: { fluency: 84, speaking_speed: 135, filler_words: ["um"], pronunciation: 89 }
+      was_terminated: terminated,
+      termination_reason: reason,
+      questions_results: qResults,
+      expression_timeline: expressionTimeline,
+      communication_metrics: {
+        filler_words: totalFillers,
+        total_words: totalWords,
+        filler_rate: totalWords > 0 ? Math.round((totalFillers / totalWords) * 100) : 0,
+      },
+      technical_score: technical,
+      communication_score: communication,
+      confidence_score: confidence
     };
 
+    setReport({ ...reportData, questions_results: qResults });
+    stopMedia();
+
+    // Save to backend
     try {
-      const token = localStorage.getItem("token") || "mock_token";
-      await fetch("http://127.0.0.1:8001/interview/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      await fetch(`${API}/interview/save-report`, {
+        method: \"POST\",
+        headers: { Authorization: `Bearer ${token}`, \"Content-Type\": \"application/json\" },
         body: JSON.stringify(reportData)
       });
-      if (selectedLevel === unlockedLevel && unlockedLevel < 10) {
-        setUnlockedLevel(prev => prev + 1);
-        localStorage.setItem("unlockedLevel", String(unlockedLevel + 1));
-      }
     } catch (e) {
-      if (selectedLevel === unlockedLevel && unlockedLevel < 10) {
-        setUnlockedLevel(prev => prev + 1);
-        localStorage.setItem("unlockedLevel", String(unlockedLevel + 1));
-      }
+      console.warn(\"Failed to save report:\", e);
     }
-    setReport(reportData);
-    setSubmitting(false);
-    setActiveInterview(false);
-  };
 
-  const endPanelInterview = async () => {
-    setSubmitting(true);
-    stopWebcam();
+    setPageState(\"report\");
+  }
 
-    try {
-      const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8001/hr-panel/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ answers: ["ans1", "ans2", "ans3"] })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPanelReport(data);
-      } else {
-        setPanelReportFallback();
-      }
-    } catch (e) {
-      setPanelReportFallback();
-    } finally {
-      setSubmitting(false);
-      setActiveInterview(false);
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function stopMedia() {
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      videoRef.current.srcObject = null;
     }
-  };
+    setWebcamOn(false);
+    if (typeof window !== \"undefined\") window.speechSynthesis?.cancel();
+  }
 
-  const setPanelReportFallback = () => {
-    setPanelReport({
-      overall_score: 85,
-      panel_reviews: [
-        { interviewer: "Dinesh Kumar (Tech Lead)", score: 82, feedback: "Technical answer shows foundational cache properties but could detail key expiration parameters more clearly." },
-        { interviewer: "Elena Rostova (Project Manager)", score: 88, feedback: "Agile sprints adjustment examples were excellent." },
-        { interviewer: "Sarah Jenkins (HR Manager)", score: 85, feedback: "Confidence indices are high. Cultural fit recommended." }
-      ],
-      consolidated_decision: "Hire",
-      hiring_status_tag: "Strong Candidate - Direct Recommendation"
-    });
-  };
+  function cleanup() {
+    stopListening();
+    stopMedia();
+    if (expressionTimerRef.current) clearInterval(expressionTimerRef.current);
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+  }
 
-  return (
-    <div className="flex flex-col gap-8 py-4">
-      {/* Title */}
-      <div className="border-b border-zinc-900 pb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="text-left">
-          <h1 className="text-3xl font-extrabold tracking-tight">AI Interview Hub</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Build interview skills via unlockable levels or test yourself in a simulated multi-interviewer mock HR Panel.
+  function buildFallbackQuestions(skills: string[]): Question[] {
+    const qs: Question[] = [
+      { id: 1, level: \"easy\", topic: \"General\", question: \"Tell me about yourself and your technical background.\" },
+      { id: 2, level: \"easy\", topic: \"General\", question: \"What programming languages are you most comfortable with?\" },
+      { id: 3, level: \"easy\", topic: skills[0] || \"General\", question: `What is ${skills[0] || \"object-oriented programming\"}?` },
+      { id: 4, level: \"easy\", topic: \"General\", question: \"What is a REST API and how does it work?\" },
+      { id: 5, level: \"easy\", topic: \"General\", question: \"What is the difference between GET and POST HTTP methods?\" },
+      { id: 6, level: \"medium\", topic: skills[1] || \"General\", question: `How have you used ${skills[1] || \"databases\"} in your projects?` },
+      { id: 7, level: \"medium\", topic: \"General\", question: \"Walk me through the architecture of your main project.\" },
+      { id: 8, level: \"medium\", topic: \"General\", question: \"How do you handle errors and exceptions in your code?\" },
+      { id: 9, level: \"medium\", topic: \"General\", question: \"What is the difference between synchronous and asynchronous programming?\" },
+      { id: 10, level: \"medium\", topic: \"General\", question: \"Describe a difficult bug you fixed. How did you debug it?\" },
+      { id: 11, level: \"hard\", topic: \"General\", question: \"Design a URL shortener like Bit.ly. Explain your architecture.\" },
+      { id: 12, level: \"hard\", topic: \"General\", question: \"How would you scale a web application to handle 1 million users?\" },
+      { id: 13, level: \"hard\", topic: skills[0] || \"General\", question: `What are the most common performance pitfalls when using ${skills[0] || \"your main tech stack\"}?` },
+      { id: 14, level: \"hard\", topic: \"General\", question: \"Explain the CAP theorem and when you would sacrifice consistency for availability.\" },
+      { id: 15, level: \"hard\", topic: \"General\", question: \"How do you ensure security in a web application? Name at least 5 strategies.\" },
+    ];
+    return qs;
+  }
+
+  function buildFallbackEvaluation(answer: string, topic: string, secondChance: boolean) {
+    const isOk = answer.length > 40;
+    return {
+      verdict: isOk ? \"partial\" : \"wrong\",
+      score: isOk ? 55 : 20,
+      feedback: isOk ? \"Your answer touched some key points.\" : \"Your answer was too brief or off-topic.\",
+      ai_response: isOk
+        ? \"That's a reasonable answer. Let's continue.\"
+        : secondChance
+        ? \"That's still not correct. We'll have to end the interview here. Thank you.\"
+        : \"That's not quite right. I'll give you one more chance.\",
+      follow_up_question: isOk || secondChance ? null : `Let me rephrase — what do you know about ${topic}?`,
+      better_answer: `A strong answer on ${topic} covers core concepts, real-world usage, and examples.`,
+      keyword_hits: []
+    };
+  }
+
+  const currentQ = questions[currentQIdx];
+  const progress = questions.length > 0 ? ((currentQIdx) / questions.length) * 100 : 0;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  // Loading
+  if (pageState === \"loading\") {
+    return (
+      <div className=\"flex flex-col items-center justify-center min-h-[60vh] gap-4\">
+        <div className=\"w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin\" />
+        <p className=\"text-zinc-400 text-sm\">Checking your profile...</p>
+      </div>
+    );
+  }
+
+  // No Resume Gate
+  if (pageState === \"no_resume\") {
+    return (
+      <div className=\"flex flex-col items-center justify-center min-h-[70vh] gap-6 text-center px-4\">
+        <div className=\"p-5 bg-rose-500/10 border border-rose-500/20 rounded-full\">
+          <FileX className=\"w-12 h-12 text-rose-400\" />
+        </div>
+        <div>
+          <h1 className=\"text-2xl font-extrabold text-white\">Resume Required</h1>
+          <p className=\"text-zinc-400 text-sm mt-2 max-w-sm\">
+            The AI Interviewer needs your resume to generate personalized questions. 
+            Upload and analyze your resume first.
+          </p>
+        </div>
+        <a
+          href=\"/resume-analyzer\"
+          className=\"flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-indigo-500/20\"
+        >
+          <Upload className=\"w-4 h-4\" />
+          Upload Your Resume
+        </a>
+      </div>
+    );
+  }
+
+  // Setup Screen
+  if (pageState === \"setup\") {
+    return (
+      <div className=\"flex flex-col gap-8 py-4 max-w-3xl mx-auto\">
+        <div className=\"border-b border-zinc-800 pb-6\">
+          <h1 className=\"text-3xl font-extrabold tracking-tight\">AI Interview Room</h1>
+          <p className=\"text-zinc-400 text-sm mt-1\">
+            The AI will conduct your entire interview based on your resume. Voice only — no typing.
           </p>
         </div>
 
-        {/* Mode Selector Tab */}
-        <div className="flex gap-2 bg-zinc-950 border border-zinc-800 p-1 rounded-xl self-start">
+        {/* Resume Card */}
+        {resumeSummary && (
+          <div className=\"p-5 bg-zinc-900/50 border border-emerald-500/20 rounded-2xl flex flex-col gap-3\">
+            <div className=\"flex items-center justify-between\">
+              <span className=\"text-xs font-bold text-zinc-400 uppercase tracking-wider\">Resume Loaded</span>
+              <span className=\"text-xs font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-0.5 rounded\">
+                ATS {resumeSummary.ats_score}/100
+              </span>
+            </div>
+            <div className=\"flex flex-wrap gap-1.5\">
+              {resumeSummary.skills.slice(0, 8).map((s, i) => (
+                <span key={i} className=\"text-[10px] bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded text-indigo-300 font-semibold\">{s}</span>
+              ))}
+            </div>
+            <p className=\"text-[11px] text-zinc-500\">
+              {resumeSummary.projects.length > 0 ? `Projects: ${resumeSummary.projects.join(\", \")}` : \"No projects detected\"}
+            </p>
+          </div>
+        )}
+
+        {/* Personality Picker */}
+        <div className=\"flex flex-col gap-3\">
+          <span className=\"text-xs font-bold text-zinc-400 uppercase tracking-wider\">Choose AI Interviewer Style</span>
+          <div className=\"grid grid-cols-3 gap-3\">
+            {PERSONALITIES.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setPersonality(p.id)}
+                className={`p-4 rounded-xl border text-left transition-all ${
+                  personality === p.id
+                    ? \"border-indigo-500 bg-indigo-500/10\"
+                    : \"border-zinc-800 bg-zinc-900/40 hover:border-zinc-600\"
+                }`}
+              >
+                <div className=\"text-2xl mb-1\">{p.icon}</div>
+                <div className=\"text-xs font-bold text-white\">{p.label}</div>
+                <div className=\"text-[10px] text-zinc-500 mt-0.5\">{p.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Info box */}
+        <div className=\"p-4 bg-amber-400/5 border border-amber-400/20 rounded-xl text-xs text-amber-300 leading-relaxed\">
+          <strong>How it works:</strong> The AI will speak questions aloud. You answer via microphone. 
+          Wrong answer → 1 more chance. Wrong again → interview ends immediately. 
+          Your face expressions and communication are tracked throughout.
+        </div>
+
+        <button
+          onClick={startInterview}
+          className=\"w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-3 shadow-xl shadow-indigo-500/20 transition-all text-sm\"
+        >
+          <Video className=\"w-5 h-5\" />
+          Start AI Interview
+        </button>
+      </div>
+    );
+  }
+
+  // Preparing / Permissions
+  if (pageState === \"permissions\" || pageState === \"preparing\") {
+    return (
+      <div className=\"flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center\">
+        <div className=\"w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin\" />
+        <div>
+          <p className=\"text-white font-bold\">{pageState === \"permissions\" ? \"Requesting camera & microphone...\" : \"AI is preparing your questions...\"}</p>
+          <p className=\"text-zinc-500 text-xs mt-1\">Please allow access when prompted</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Report Screen
+  if (pageState === \"report\" && report) {
+    const overall = Math.round((report.technical_score + report.communication_score + report.confidence_score) / 3);
+    const verdict = report.was_terminated
+      ? { label: \"Interview Terminated\", color: \"text-rose-400\", bg: \"bg-rose-500/10 border-rose-500/20\", icon: \"🚫\" }
+      : overall >= 75
+      ? { label: \"Strong Candidate\", color: \"text-emerald-400\", bg: \"bg-emerald-500/10 border-emerald-500/20\", icon: \"🏆\" }
+      : overall >= 55
+      ? { label: \"Shows Promise\", color: \"text-amber-400\", bg: \"bg-amber-500/10 border-amber-500/20\", icon: \"📈\" }
+      : { label: \"Needs Improvement\", color: \"text-rose-400\", bg: \"bg-rose-500/10 border-rose-500/20\", icon: \"📚\" };
+
+    return (
+      <div className=\"flex flex-col gap-6 py-4 max-w-4xl mx-auto\">
+        <div className=\"border-b border-zinc-800 pb-4 flex items-center justify-between\">
+          <h1 className=\"text-2xl font-extrabold\">Interview Report</h1>
           <button
-            onClick={() => setActiveMode("levels")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              activeMode === "levels" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"
-            }`}
+            onClick={() => { setPageState(\"setup\"); setResults([]); setExpressionTimeline([]); setTotalFillers(0); setTotalWords(0); setReport(null); }}
+            className=\"flex items-center gap-2 text-xs text-zinc-400 border border-zinc-700 px-3 py-1.5 rounded-lg hover:bg-zinc-800\"
           >
-            <BrainCircuit className="w-3.5 h-3.5" />
-            <span>Progression Levels</span>
+            <RefreshCw className=\"w-3 h-3\" /> Retake Interview
           </button>
-          <button
-            onClick={() => setActiveMode("panel")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              activeMode === "panel" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>AI Mock HR Panel</span>
+        </div>
+
+        {/* Verdict Banner */}
+        <div className={`p-5 border rounded-2xl flex items-center gap-4 ${verdict.bg}`}>
+          <span className=\"text-4xl\">{verdict.icon}</span>
+          <div>
+            <div className={`text-lg font-extrabold ${verdict.color}`}>{verdict.label}</div>
+            <div className=\"text-xs text-zinc-400 mt-0.5\">
+              Overall Score: <span className={`font-bold ${verdict.color}`}>{overall}/100</span>
+              {report.was_terminated && <span className=\"ml-2 text-rose-400\">— Ended after repeated wrong answers</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* Score Cards */}
+        <div className=\"grid grid-cols-3 gap-4\">
+          {[
+            { label: \"Technical\", score: report.technical_score, icon: Brain, color: \"text-indigo-400\", note: \"Answer quality\" },
+            { label: \"Communication\", score: report.communication_score, icon: MessageSquare, color: \"text-violet-400\", note: `${report.communication_metrics?.filler_words || 0} filler words` },
+            { label: \"Confidence\", score: report.confidence_score, icon: Smile, color: \"text-emerald-400\", note: \"Facial expression avg\" },
+          ].map((item, i) => (
+            <div key={i} className=\"p-5 bg-zinc-900/50 border border-zinc-800 rounded-2xl flex flex-col items-center text-center gap-2\">
+              <item.icon className={`w-6 h-6 ${item.color}`} />
+              <span className=\"text-[10px] font-bold text-zinc-500 uppercase\">{item.label}</span>
+              <span className={`text-3xl font-extrabold ${item.color}`}>{item.score}<span className=\"text-base text-zinc-600\">/100</span></span>
+              <span className=\"text-[10px] text-zinc-600\">{item.note}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Q&A Breakdown */}
+        <div className=\"flex flex-col gap-3\">
+          <span className=\"text-xs font-bold text-zinc-400 uppercase tracking-wider\">Question Breakdown</span>
+          {report.questions_results.map((r: QuestionResult, i: number) => (
+            <div key={i} className={`p-4 rounded-xl border ${
+              r.verdict === \"correct\" ? \"border-emerald-500/20 bg-emerald-500/5\"
+              : r.verdict === \"partial\" ? \"border-amber-500/20 bg-amber-500/5\"
+              : \"border-rose-500/20 bg-rose-500/5\"
+            }`}>
+              <div className=\"flex items-center gap-2 mb-2\">
+                {r.verdict === \"correct\" ? <CheckCircle className=\"w-4 h-4 text-emerald-400 shrink-0\" />
+                  : r.verdict === \"partial\" ? <AlertTriangle className=\"w-4 h-4 text-amber-400 shrink-0\" />
+                  : <XCircle className=\"w-4 h-4 text-rose-400 shrink-0\" />}
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${LEVEL_COLORS[r.level]}`}>{r.level.toUpperCase()}</span>
+                <span className=\"text-[10px] text-zinc-500\">{r.topic}</span>
+                {r.was_second_chance && <span className=\"text-[10px] text-amber-400 bg-amber-400/10 px-1.5 rounded\">2nd Chance</span>}
+                <span className=\"ml-auto text-xs font-bold text-zinc-300\">{r.score}/100</span>
+              </div>
+              <p className=\"text-xs font-semibold text-zinc-200 mb-1\">{r.question}</p>
+              <p className=\"text-[11px] text-zinc-500 italic mb-2\">Your answer: \"{r.spoken_answer.slice(0, 120)}{r.spoken_answer.length > 120 ? '...' : ''}\"</p>
+              <p className=\"text-[11px] text-zinc-400\"><span className=\"font-bold text-zinc-300\">Feedback:</span> {r.feedback}</p>
+              {r.verdict !== \"correct\" && (
+                <p className=\"text-[11px] text-zinc-500 mt-1\"><span className=\"font-bold text-zinc-400\">Better answer:</span> {r.better_answer}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── LIVE INTERVIEW ROOM ────────────────────────────────────────────────────
+  return (
+    <div className=\"flex flex-col h-[calc(100vh-120px)] gap-0 overflow-hidden\">
+      {/* Top bar */}
+      <div className=\"flex items-center justify-between px-4 py-2 bg-zinc-950 border-b border-zinc-800 shrink-0\">
+        <div className=\"flex items-center gap-3\">
+          <span className=\"text-xs font-bold text-zinc-300\">
+            Question {Math.min(currentQIdx + 1, questions.length)} / {questions.length}
+          </span>
+          {/* Level progress */}
+          <div className=\"flex gap-1\">
+            {[\"easy\", \"medium\", \"hard\"].map(lvl => (
+              <span key={lvl} className={`text-[9px] font-bold px-2 py-0.5 rounded border ${LEVEL_COLORS[lvl]}`}>{lvl}</span>
+            ))}
+          </div>
+        </div>
+        {/* Progress bar */}
+        <div className=\"flex-1 mx-6 h-1.5 bg-zinc-800 rounded-full overflow-hidden\">
+          <div className=\"h-full bg-indigo-600 rounded-full transition-all duration-500\" style={{ width: `${progress}%` }} />
+        </div>
+        {/* Controls */}
+        <div className=\"flex items-center gap-2\">
+          <button onClick={() => setMicOn(m => !m)} className={`p-1.5 rounded-lg border text-xs ${micOn ? \"border-zinc-700 text-zinc-400\" : \"border-rose-600 bg-rose-600/10 text-rose-400\"}`}>
+            {micOn ? <Mic className=\"w-3.5 h-3.5\" /> : <MicOff className=\"w-3.5 h-3.5\" />}
           </button>
-          <button
-            onClick={() => setActiveMode("adaptive")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              activeMode === "adaptive" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-white"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Adaptive Resume AI</span>
+          <button onClick={() => { stopListening(); terminateInterview(results); }} className=\"p-1.5 rounded-lg border border-rose-600/40 text-rose-400 text-xs hover:bg-rose-600/10\">
+            <PhoneOff className=\"w-3.5 h-3.5\" />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Left column Settings */}
-        <div className="lg:col-span-1 h-fit flex flex-col gap-4">
-          {activeMode === "levels" ? (
-            <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-              <span className="text-xs font-bold text-zinc-400 uppercase block border-b border-zinc-800 pb-2">Levels progression</span>
-              <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
-                {levels.map((lvl) => {
-                  const isLocked = lvl.num > unlockedLevel;
-                  const isSelected = selectedLevel === lvl.num;
-                  return (
-                    <button
-                      key={lvl.num}
-                      disabled={isLocked}
-                      onClick={() => setSelectedLevel(lvl.num)}
-                      className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left text-xs transition-all ${
-                        isLocked 
-                          ? "border-zinc-950 bg-zinc-950/20 text-zinc-600 cursor-not-allowed" 
-                          : isSelected
-                            ? "border-indigo-500 bg-indigo-500/10 text-indigo-400 font-bold"
-                            : "border-zinc-800/60 bg-zinc-950/40 text-zinc-300 hover:border-zinc-700"
-                      }`}
-                    >
-                      <span>Level {lvl.num}: {lvl.name}</span>
-                      {isLocked ? <Lock className="w-3.5 h-3.5 text-zinc-655" /> : <Unlock className="w-3.5 h-3.5 text-indigo-400" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : activeMode === "panel" ? (
-            <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-3 text-left">
-              <span className="text-xs font-bold text-zinc-400 uppercase block border-b border-zinc-800 pb-2">Board Members</span>
-              {panelQuestions.panel_members.map((p: any, idx: number) => (
-                <div key={idx} className="p-2 bg-zinc-950/50 border border-zinc-900 rounded-lg text-xs">
-                  <span className="font-bold text-zinc-200 block">{p.name}</span>
-                  <span className="text-[10px] text-indigo-400 font-semibold">{p.role} ({p.focus})</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4 text-left">
-              <span className="text-xs font-bold text-zinc-400 uppercase block border-b border-zinc-800 pb-2">Adaptive Parameters</span>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] text-zinc-500 font-bold uppercase">Target Job Role</span>
-                  <span className="text-xs font-semibold text-zinc-200">{targetRole}</span>
-                </div>
-                <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
-                  <span className="text-[10px] text-zinc-500 font-bold uppercase">Interviewer Personality</span>
-                  <span className="text-xs font-semibold text-amber-400">{adaptiveState?.personality || personality}</span>
-                </div>
-                <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
-                  <span className="text-[10px] text-zinc-500 font-bold uppercase">Target Company Style</span>
-                  <span className="text-xs font-semibold text-zinc-200">{adaptiveState?.company || company || "None (General)"}</span>
-                </div>
-                
-                {activeInterview && adaptiveState && (
-                  <>
-                    <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Engine Difficulty</span>
-                      <span className={`w-fit px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                        adaptiveState.difficulty === "easy"
-                          ? "bg-green-500/10 border-green-500/30 text-green-400"
-                          : adaptiveState.difficulty === "medium"
-                            ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
-                            : adaptiveState.difficulty === "hard"
-                              ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
-                              : "bg-rose-500/10 border-rose-500/30 text-rose-400 animate-pulse-slow"
-                      }`}>
-                        {adaptiveState.difficulty}
-                      </span>
-                    </div>
+      {/* Warning Banner */}
+      {warningMsg && (
+        <div className=\"px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2 shrink-0\">
+          <AlertTriangle className=\"w-3.5 h-3.5 text-amber-400\" />
+          <span className=\"text-xs text-amber-300 font-semibold\">{warningMsg}</span>
+        </div>
+      )}
 
-                    <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Current Evaluated Topic</span>
-                      <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse-slow" />
-                        {adaptiveState.current_topic}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col gap-1 border-t border-zinc-800/50 pt-2">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase">Correct Answer Streak</span>
-                      <span className="text-xs font-semibold text-zinc-300">
-                        {"🔥 ".repeat(adaptiveState.consecutive_correct) || "0 correct"}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
+      {/* Main room */}
+      <div className=\"flex flex-1 overflow-hidden\">
+        {/* Left: User video */}
+        <div className=\"w-1/2 relative bg-zinc-950 border-r border-zinc-800 flex flex-col\">
+          <video
+            ref={videoRef}
+            className=\"w-full h-full object-cover scale-x-[-1]\"
+            autoPlay
+            muted
+            playsInline
+          />
+          {!webcamOn && (
+            <div className=\"absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-950\">
+              <VideoOff className=\"w-10 h-10 text-zinc-600\" />
+              <span className=\"text-xs text-zinc-600\">Camera off</span>
             </div>
           )}
+
+          {/* Expression glow overlay */}
+          <div
+            className=\"absolute inset-0 pointer-events-none rounded-none\"
+            style={{
+              boxShadow: `inset 0 0 40px 10px ${
+                expression.confidence >= 65 ? \"rgba(16,185,129,0.25)\"
+                : expression.confidence >= 45 ? \"rgba(245,158,11,0.25)\"
+                : \"rgba(239,68,68,0.25)\"
+              }`
+            }}
+          />
+
+          {/* Expression meters */}
+          <div className=\"absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent\">
+            {[
+              { label: \"Confidence\", val: expression.confidence, color: \"bg-emerald-500\" },
+              { label: \"Nervousness\", val: expression.nervousness, color: \"bg-rose-500\" },
+              { label: \"Eye Contact\", val: expression.eyeContact, color: \"bg-indigo-500\" },
+            ].map((m, i) => (
+              <div key={i} className=\"flex items-center gap-2 mb-1\">
+                <span className=\"text-[9px] text-zinc-400 w-16 shrink-0\">{m.label}</span>
+                <div className=\"flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden\">
+                  <div className={`h-full rounded-full ${m.color} transition-all duration-500`} style={{ width: `${m.val}%` }} />
+                </div>
+                <span className=\"text-[9px] text-zinc-400 w-6 text-right\">{m.val}%</span>
+              </div>
+            ))}
+          </div>
+
+          {/* You label */}
+          <div className=\"absolute top-2 left-2 text-[10px] font-bold text-white bg-black/60 px-2 py-0.5 rounded\">YOU</div>
         </div>
 
-        {/* Right column Area */}
-        <div className="lg:col-span-3 flex flex-col gap-6">
-          {!activeInterview && !report && !panelReport && !adaptiveReport && (
-            <div className="p-8 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col items-center justify-center text-center gap-6 max-w-xl mx-auto w-full">
-              <div className="p-4 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-full">
-                {activeMode === "levels" ? <BrainCircuit className="w-8 h-8" /> : activeMode === "panel" ? <Users className="w-8 h-8" /> : <Sparkles className="w-8 h-8 text-amber-400 animate-glow" />}
+        {/* Right: AI panel */}
+        <div className=\"w-1/2 flex flex-col bg-zinc-950\">
+          {/* AI Avatar */}
+          <div className=\"flex-1 flex flex-col items-center justify-center gap-4 p-6\">
+            {/* AI face */}
+            <div className=\"relative\">
+              <div className={`w-24 h-24 rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-xl shadow-indigo-500/30 ${aiSpeaking ? \"animate-pulse\" : \"\"}`}>
+                <Brain className=\"w-10 h-10 text-white\" />
               </div>
-
-              <div className="flex flex-col gap-1.5 w-full">
-                <h3 className="font-extrabold text-xl text-white">
-                  {activeMode === "levels" 
-                    ? `Level ${selectedLevel}: ${activeQuestionSet.title}` 
-                    : activeMode === "panel" 
-                      ? "3-Member HR Board Panel" 
-                      : "Adaptive Resume-Based Interview"}
-                </h3>
-                <p className="text-xs text-zinc-400 max-w-sm leading-relaxed mx-auto">
-                  {activeMode === "levels" 
-                    ? activeQuestionSet.intro 
-                    : activeMode === "panel" 
-                      ? "Simulate an intensive assessment deck with Technical Leads, PMs, and HR Managers. Direct shortlists decision based on reviews."
-                      : "Personalized AI session matching your resume skills, certifications, and experience. Adapts difficulty based on answers."}
-                </p>
-
-                {activeMode === "adaptive" && (
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-left w-full max-w-2xl mx-auto">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Target Job Role</label>
-                      <select
-                        value={targetRole}
-                        onChange={(e) => setTargetRole(e.target.value)}
-                        className="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer w-full"
-                      >
-                        <option value="AI Software Engineer">AI Software Engineer</option>
-                        <option value="Data Scientist / Analyst">Data Scientist / Analyst</option>
-                        <option value="Frontend Web Developer">Frontend Web Developer</option>
-                        <option value="Backend Developer">Backend Developer</option>
-                        <option value="Fullstack Software Engineer">Fullstack Software Engineer</option>
-                      </select>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Interviewer Personality</label>
-                      <select
-                        value={personality}
-                        onChange={(e) => setPersonality(e.target.value)}
-                        className="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer w-full"
-                      >
-                        <option value="Friendly Recruiter">Friendly Recruiter</option>
-                        <option value="Corporate HR">Corporate HR</option>
-                        <option value="Startup Founder">Startup Founder</option>
-                        <option value="Technical Lead">Technical Lead</option>
-                        <option value="Stress Interviewer">Stress Interviewer</option>
-                      </select>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Company Style</label>
-                      <select
-                        value={company}
-                        onChange={(e) => setCompany(e.target.value)}
-                        className="bg-zinc-950 border border-zinc-800 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 cursor-pointer w-full"
-                      >
-                        <option value="">General (None)</option>
-                        <option value="Google">Google</option>
-                        <option value="Amazon">Amazon</option>
-                        <option value="Razorpay">Razorpay</option>
-                        <option value="NVIDIA">NVIDIA</option>
-                        <option value="Microsoft">Microsoft</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 w-full border-t border-zinc-800 pt-6">
-                <button 
-                  onClick={() => { setInteractionMode("text"); startInterview(); }} 
-                  className="flex-1 py-3 bg-zinc-900 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-zinc-850 transition-colors"
-                >
-                  <MessageSquare className="w-4 h-4" /> Start Text Session
-                </button>
-                <button 
-                  onClick={() => { setInteractionMode("voice_video"); startInterview(); }} 
-                  className="flex-1 py-3 bg-indigo-600 text-white font-semibold rounded-xl text-xs hover:bg-indigo-700 flex items-center justify-center gap-2 shadow transition-colors"
-                >
-                  <Video className="w-4 h-4" /> Start Video Session
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeInterview && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Chat log */}
-              <div className="md:col-span-2 p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col justify-between h-[450px]">
-                <div className="flex justify-between items-center border-b border-zinc-800 pb-3 mb-3">
-                  <span className="text-xs font-bold text-zinc-400 uppercase">Dialogue Feed</span>
-                  <span className="text-[10px] font-semibold text-indigo-400">
-                    {activeMode === "adaptive"
-                      ? `Question ${adaptiveHistory.length + 1} of 5`
-                      : `Question ${currentQuestionIdx + 1} of ${activeMode === "levels" ? activeQuestionSet.questions.length : panelQuestions.questions.length}`}
-                  </span>
-                </div>
-
-                <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 scrollbar">
-                  {chatLog.map((log, idx) => (
-                    <div key={idx} className={`flex gap-3 max-w-[85%] ${log.sender === "user" ? "self-end flex-row-reverse" : "self-start"}`}>
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 select-none ${log.sender === "user" ? "bg-indigo-600 text-white" : "bg-zinc-850 text-indigo-400 border border-indigo-500/10"}`}>
-                        {log.avatar || (log.sender === "user" ? "Me" : "AI")}
-                      </div>
-                      <div className={`p-3 rounded-xl text-xs leading-relaxed ${log.sender === "user" ? "bg-indigo-600 text-white" : "bg-zinc-950/60 border border-zinc-850 text-zinc-300"}`}>
-                        <div className="text-[9px] font-bold text-zinc-500 mb-0.5">{log.sender}</div>
-                        {log.text}
-                      </div>
-                    </div>
+              {aiSpeaking && (
+                <div className=\"absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5\">
+                  {[1,2,3,4].map(i => (
+                    <div key={i} className=\"w-1 bg-indigo-400 rounded-full animate-bounce\" style={{ height: `${8 + i * 3}px`, animationDelay: `${i * 0.1}s` }} />
                   ))}
-                </div>
-
-                <div className="flex gap-2 border-t border-zinc-800 pt-3 mt-3">
-                  <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSendMessage(); }} placeholder="Answer query..." className="flex-1 bg-zinc-950 border border-zinc-850 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500" />
-                  <button
-                    onClick={startSpeechRecognition}
-                    className={`p-2.5 rounded-xl border transition-all flex items-center justify-center ${
-                      isListening
-                        ? "bg-rose-600 border-rose-500 text-white animate-pulse"
-                        : "bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
-                    }`}
-                    title="Speak answer"
-                  >
-                    <Mic className="w-4 h-4" />
-                  </button>
-                  <button onClick={handleSendMessage} className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"><Send className="w-4 h-4" /></button>
-                </div>
-              </div>
-
-              {/* Webcam */}
-              <div className="md:col-span-1 p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-                <span className="text-xs font-bold text-zinc-400 uppercase block border-b border-zinc-800 pb-2">Video Stream</span>
-                <div className="w-full aspect-[4/3] bg-zinc-950 rounded-xl border border-zinc-850 overflow-hidden relative">
-                  {webcamActive ? (
-                    <>
-                      <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
-                      <canvas ref={canvasRef} width="240" height="180" className="absolute inset-0 w-full h-full z-10" />
-                    </>
-                  ) : <div className="absolute inset-0 flex items-center justify-center text-zinc-600 text-[10px]">Camera Deactivated</div>}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {submitting && (
-            <div className="max-w-xl mx-auto w-full p-10 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col items-center gap-6 text-center">
-              <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
-              <span className="text-xs font-semibold text-zinc-200">Evaluating consolidated panel decisions...</span>
-            </div>
-          )}
-
-          {/* Level Report */}
-          {report && activeMode === "levels" && (
-            <div className="flex flex-col gap-6 text-left">
-              <div className="p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-                <span className="text-xs font-bold text-zinc-400 uppercase border-b border-zinc-800 pb-2">Level completed metrics</span>
-                <h3 className="font-extrabold text-base text-zinc-200">Grade: {report.score}/100</h3>
-                <p className="text-xs text-zinc-400 leading-relaxed bg-zinc-950/50 p-3 rounded-xl">{report.feedback}</p>
-                <button onClick={() => { setReport(null); setSelectedLevel(selectedLevel + 1); }} className="w-fit px-4 py-2 bg-indigo-600 text-white font-semibold rounded-xl text-xs self-end">Next Level</button>
-              </div>
-            </div>
-          )}
-
-          {/* Panel Mock Report */}
-          {panelReport && activeMode === "panel" && (
-            <div className="flex flex-col gap-6 text-left">
-              {/* Decisions Banner */}
-              <div className="p-5 bg-indigo-950/15 border border-indigo-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-indigo-600/10 rounded-xl text-indigo-400 font-bold text-lg">
-                    {panelReport.overall_score}/100
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Board Decision</span>
-                    <h3 className="text-base font-extrabold text-emerald-400">{panelReport.consolidated_decision} Recommendation</h3>
-                  </div>
-                </div>
-                <button onClick={() => setPanelReport(null)} className="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-200 text-xs font-semibold rounded-xl transition-all border border-zinc-800 shrink-0">
-                  Restart Panel Mock
-                </button>
-              </div>
-
-              {/* Individual reviews */}
-              <div className="flex flex-col gap-4">
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Interviewer Critiques</span>
-                {panelReport.panel_reviews.map((r: any, idx: number) => (
-                  <div key={idx} className="p-4 bg-zinc-900/40 border border-zinc-800/85 rounded-xl flex flex-col gap-2">
-                    <div className="flex justify-between items-center border-b border-zinc-900 pb-1.5">
-                      <span className="font-bold text-zinc-200 text-xs">{r.interviewer}</span>
-                      <span className="text-xs font-bold text-indigo-400">{r.score}/100</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-400 leading-relaxed font-normal">{r.feedback}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Adaptive AI Report */}
-          {adaptiveReport && activeMode === "adaptive" && (
-            <div className="flex flex-col gap-6 text-left w-full">
-              {/* Decisions Banner */}
-              <div className="p-6 bg-indigo-950/15 border border-indigo-500/25 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
-                <div className="flex items-center gap-4">
-                  <div className="p-4 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-2xl font-black text-2xl shadow-inner">
-                    {adaptiveReport.readiness_score}%
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Interview Readiness Score</span>
-                    <h3 className="text-lg font-extrabold text-white">Adaptive Evaluation Complete</h3>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setAdaptiveReport(null)}
-                  className="px-5 py-3 bg-zinc-850 hover:bg-zinc-850 text-zinc-200 text-xs font-semibold rounded-xl transition-all border border-zinc-800 hover:border-zinc-700 shrink-0 shadow-sm"
-                >
-                  Restart Adaptive Session
-                </button>
-              </div>
-
-              {/* Main metrics grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Scores card */}
-                <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Hiring Benchmarks</span>
-                  <div className="flex flex-col gap-4">
-                    {[
-                      { label: "Technical Knowledge", score: adaptiveReport.technical_score, color: "bg-indigo-500" },
-                      { label: "Communication Flow", score: adaptiveReport.communication_score, color: "bg-emerald-500" },
-                      { label: "Confidence & Articulation", score: adaptiveReport.confidence_score, color: "bg-amber-500" },
-                      { label: "Problem Solving Speed", score: adaptiveReport.problem_solving_score, color: "bg-rose-500" },
-                      { label: "Project Architecture", score: adaptiveReport.project_score, color: "bg-violet-500" }
-                    ].map((metric, idx) => (
-                      <div key={idx} className="flex flex-col gap-1.5">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-zinc-400 font-medium">{metric.label}</span>
-                          <span className="text-zinc-200 font-bold">{metric.score}/100</span>
-                        </div>
-                        <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-900">
-                          <div className={`h-full ${metric.color} rounded-full`} style={{ width: `${metric.score}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Comfort Analysis */}
-                <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Comfort Analysis</span>
-                  <div className="flex flex-col gap-4">
-                    <div>
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block mb-2">Strong Areas</span>
-                      <div className="flex flex-wrap gap-2">
-                        {adaptiveReport.strong_areas.map((area: string, idx: number) => (
-                          <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-                            <CheckCircle className="w-3 h-3" />
-                            {area}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block mb-2">Moderate Areas</span>
-                      <div className="flex flex-wrap gap-2">
-                        {adaptiveReport.moderate_areas.map((area: string, idx: number) => (
-                          <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium">
-                            <CheckCircle className="w-3 h-3" />
-                            {area}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block mb-2">Weak Areas</span>
-                      <div className="flex flex-wrap gap-2">
-                        {adaptiveReport.weak_areas.map((area: string, idx: number) => (
-                          <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium">
-                            <XCircle className="w-3 h-3" />
-                            {area}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Behavior & Recruiter Notes */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-2">
-                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Interview Behavior Analysis</span>
-                  <p className="text-xs text-zinc-400 leading-relaxed font-normal p-1">
-                    {adaptiveReport.behavior_analysis}
-                  </p>
-                </div>
-
-                <div className="p-6 bg-amber-950/10 border border-amber-500/20 rounded-2xl flex flex-col gap-2 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/5 rounded-full blur-2xl" />
-                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider block border-b border-amber-900/30 pb-2">What the Recruiter Wrote (Internal Memo)</span>
-                  <p className="text-xs text-amber-200/80 italic font-medium leading-relaxed font-serif p-1 whitespace-pre-wrap">
-                    "{adaptiveReport.recruiter_notes}"
-                  </p>
-                </div>
-              </div>
-
-              {/* Improvement Plan */}
-              <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Personalized Improvement Plan</span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Topics to Revise</span>
-                    <ul className="flex flex-col gap-1.5">
-                      {adaptiveReport.topics_to_revise.map((topic: string, idx: number) => (
-                        <li key={idx} className="text-xs text-zinc-300 flex items-start gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0 mt-1.5" />
-                          <span>{topic}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Recommended Practice Projects</span>
-                    <ul className="flex flex-col gap-1.5">
-                      {adaptiveReport.recommended_projects.map((proj: string, idx: number) => (
-                        <li key={idx} className="text-xs text-zinc-300 flex items-start gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0 mt-1.5" />
-                          <span>{proj}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Targeted Practice Questions</span>
-                    <ul className="flex flex-col gap-1.5">
-                      {adaptiveReport.practice_questions.map((q: string, idx: number) => (
-                        <li key={idx} className="text-xs text-zinc-300 flex items-start gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5" />
-                          <span>{q}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* Turn-by-Turn Replay Panel */}
-              {adaptiveReport.replay && adaptiveReport.replay.length > 0 && (
-                <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-4">
-                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block border-b border-zinc-800 pb-2">Turn-by-Turn Interview Replay</span>
-                  <div className="flex flex-col gap-4">
-                    {adaptiveReport.replay.map((item: any, idx: number) => (
-                      <details key={idx} className="group bg-zinc-950/40 border border-zinc-850 rounded-xl overflow-hidden transition-all duration-350">
-                        <summary className="p-4 flex justify-between items-center cursor-pointer text-xs font-bold text-zinc-200 select-none hover:bg-zinc-900/40">
-                          <span className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-full bg-indigo-600/20 text-indigo-400 text-[10px] flex items-center justify-center font-bold">
-                              Q{idx + 1}
-                            </span>
-                            <span className="truncate max-w-[280px] sm:max-w-md md:max-w-xl">{item.question}</span>
-                          </span>
-                          <ChevronRight className="w-4 h-4 text-zinc-400 group-open:rotate-90 transition-transform" />
-                        </summary>
-                        <div className="p-4 border-t border-zinc-900 bg-zinc-950/20 flex flex-col gap-4 text-xs">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[10px] text-indigo-400 font-bold uppercase">Your Answer</span>
-                            <p className="text-zinc-300 bg-zinc-950/60 p-3 rounded-lg border border-zinc-900 whitespace-pre-wrap">{item.answer || "No response provided."}</p>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[10px] text-rose-400 font-bold uppercase">AI Critique</span>
-                            <p className="text-zinc-300 bg-zinc-950/60 p-3 rounded-lg border border-zinc-900">{item.feedback}</p>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[10px] text-emerald-400 font-bold uppercase">Suggested Better Answer</span>
-                            <p className="text-zinc-300 bg-zinc-950/60 p-3 rounded-lg border border-zinc-900 font-normal leading-relaxed">{item.suggested_better_answer}</p>
-                          </div>
-                        </div>
-                      </details>
-                    ))}
-                  </div>
                 </div>
               )}
             </div>
-          )}
+            <div className=\"text-center\">
+              <p className=\"text-sm font-bold text-white\">AI Interviewer</p>
+              <p className=\"text-[10px] text-zinc-500 capitalize\">{personality} style</p>
+            </div>
+
+            {/* Current question */}
+            {currentQ && (
+              <div className=\"w-full p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl text-left\">
+                <div className=\"flex items-center gap-2 mb-2\">
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${LEVEL_COLORS[currentQ.level]}`}>{currentQ.level.toUpperCase()}</span>
+                  <span className=\"text-[10px] text-zinc-500\">{currentQ.topic}</span>
+                </div>
+                <p className=\"text-xs text-zinc-200 leading-relaxed\">{currentQ.question}</p>
+              </div>
+            )}
+
+            {/* Status */}
+            <div className=\"flex items-center gap-2\">
+              {evaluating ? (
+                <><div className=\"w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin\" />
+                <span className=\"text-xs text-indigo-400\">Evaluating answer...</span></>
+              ) : aiSpeaking ? (
+                <><Sparkles className=\"w-3.5 h-3.5 text-violet-400 animate-pulse\" />
+                <span className=\"text-xs text-violet-400\">AI is speaking...</span></>
+              ) : isListening ? (
+                <><span className=\"w-2 h-2 rounded-full bg-rose-500 animate-ping\" />
+                <span className=\"text-xs text-rose-400\">Listening... speak now</span></>
+              ) : (
+                <span className=\"text-xs text-zinc-600\">Waiting...</span>
+              )}
+            </div>
+          </div>
+
+          {/* Live transcript */}
+          <div className=\"border-t border-zinc-800 p-4 min-h-[80px] max-h-[120px] overflow-y-auto bg-zinc-900/30\">
+            <p className=\"text-[10px] text-zinc-600 font-bold uppercase mb-1\">Live Transcript</p>
+            <p className=\"text-xs text-zinc-300 leading-relaxed\">
+              {liveTranscript || <span className=\"text-zinc-700 italic\">Your spoken words will appear here...</span>}
+            </p>
+          </div>
         </div>
+      </div>
+
+      {/* Bottom mic indicator */}
+      <div className=\"px-4 py-2 bg-zinc-950 border-t border-zinc-800 shrink-0 flex items-center justify-center gap-2\">
+        {isListening
+          ? <><span className=\"w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping\" /><span className=\"text-xs text-rose-400 font-semibold\">🎙️ Listening — speak your answer</span></>
+          : aiSpeaking
+          ? <span className=\"text-xs text-violet-400\">🔊 AI is speaking — please wait</span>
+          : evaluating
+          ? <span className=\"text-xs text-indigo-400\">⚙️ Processing your answer...</span>
+          : <span className=\"text-xs text-zinc-600\">Waiting for next question...</span>
+        }
       </div>
     </div>
   );

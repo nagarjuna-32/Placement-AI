@@ -1,417 +1,410 @@
-"use client";
+\"use client\";
 
-import { useState, useEffect, useRef } from "react";
-import { 
-  Users, 
-  Play, 
-  Square, 
-  Send, 
-  MessageSquareCode, 
-  Sparkles, 
-  UserPlus, 
-  Mic,
-  Award,
-  ChevronRight,
-  HelpCircle
-} from "lucide-react";
+import { useState, useEffect, useRef } from \"react\";
+import {
+  Users, Play, Square, Mic, MicOff, Video, VideoOff,
+  FileX, Upload, Brain, Sparkles, AlertTriangle
+} from \"lucide-react\";
 
-interface GDMessage {
-  speaker: string;
-  avatar: string;
-  color: string;
-  text: string;
-  isUser: boolean;
-}
+interface GDMessage { speaker: string; avatar: string; color: string; text: string; isUser: boolean; }
 
-export default function GroupDiscussionRoom() {
-  const [topic, setTopic] = useState("Is AI replacing software developers?");
-  const [activeDiscussion, setActiveDiscussion] = useState(false);
+const AI_PARTICIPANTS = [
+  { name: \"Priya Sharma\",  avatar: \"PS\", color: \"from-pink-500 to-rose-500\",     voiceIdx: 1, role: \"Analytical\" },
+  { name: \"Rohan Das\",     avatar: \"RD\", color: \"from-blue-500 to-indigo-500\",   voiceIdx: 2, role: \"Pragmatic\" },
+  { name: \"Vikram Mehta\",  avatar: \"VM\", color: \"from-emerald-500 to-teal-500\",  voiceIdx: 3, role: \"Aggressive\" },
+  { name: \"Emily Watson\",  avatar: \"EW\", color: \"from-amber-500 to-orange-500\",  voiceIdx: 0, role: \"Collaborative\" },
+  { name: \"Kabir Sen\",     avatar: \"KS\", color: \"from-violet-500 to-purple-500\", voiceIdx: 4, role: \"Skeptical\" },
+];
+
+const TOPICS = [
+  \"Is AI replacing software developers?\",
+  \"Remote work vs. Onsite workplace\",
+  \"Cryptocurrency: Revolution or bubble?\",
+  \"Social media: Connecting or isolating?\",
+  \"Should coding be taught in schools?\",
+];
+
+const DIALOGUES: Record<string, string[]> = {
+  \"Priya Sharma\": [
+    \"Looking at the data — AI tools boost developer output by 55%, but this actually expands software markets, not reduces headcount. History shows productivity gains create more jobs, not fewer.\",
+    \"We need to separate syntax generation from architectural reasoning. Software engineering is 90% logic and design. Code writing is just the final 10%.\",
+    \"I agree on the security risk. If junior developers blindly paste AI code, the security debt skyrockets. Human oversight becomes more critical, not less.\",
+  ],
+  \"Rohan Das\": [
+    \"AI is essentially a smart autocomplete for syntax. But who debugs when the AI hallucinates? Developers shift to system checkers and prompt engineers — a different role, not elimination.\",
+    \"Business logic cannot be captured by a prompt. A product owner cannot tell an AI to build a custom logistics engine without deep technical specifications — which only engineers can write.\",
+    \"Exactly. We're moving from syntax-level programming to higher-level system design. This demands more skill, not less.\",
+  ],
+  \"Vikram Mehta\": [
+    \"I'll push back here. Generative models can already scaffold a full Next.js app in seconds. One senior architect with AI tools could replace a team of four juniors within five years.\",
+    \"That's the real threat — junior hiring contracts. If seniors are 10x faster, why hire entry-level coders for standard test writing?\",
+    \"Upskilling in system design, cloud, and DevOps is the only survival path for fresh graduates in this landscape.\",
+  ],
+  \"Emily Watson\": [
+    \"Vikram raises valid concerns, but AI also democratizes engineering. A single developer can launch a full MVP startup in days now. That creates more projects, not fewer jobs.\",
+    \"Let's synthesize: Priya's system design point and Vikram's junior-hiring concern together mean placement prep must shift from basic syntax to architectural patterns.\",
+    \"Human collaboration is irreplaceable. Team communication, negotiation, stakeholder management — AI cannot replicate these soft skills.\",
+  ],
+  \"Kabir Sen\": [
+    \"We're ignoring the IP problem. Copilot is trained on public repos — there are real copyright liability issues. Enterprise SaaS cannot use raw AI code without massive human legal review.\",
+    \"Who owns AI-generated code? This legal grey area alone will slow enterprise adoption significantly. Real-world constraints matter here.\",
+    \"Testing is another gap. AI code lacks proper unit test coverage unless explicitly prompted — and even then, edge cases slip through. Human QA remains essential.\",
+  ],
+};
+
+export default function GDSimulatorPage() {
+  const [hasResume, setHasResume] = useState<boolean | null>(null);
+  const [topic, setTopic] = useState(TOPICS[0]);
+  const [active, setActive] = useState(false);
   const [messages, setMessages] = useState<GDMessage[]>([]);
-  const [userInput, setUserInput] = useState("");
-  const [report, setReport] = useState<any | null>(null);
   const [activeSpeaker, setActiveSpeaker] = useState<string | null>(null);
-  const [webcamActive, setWebcamActive] = useState(false);
+  const [webcamOn, setWebcamOn] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState(\"\");
+  const [speakingTime, setSpeakingTime] = useState(0);
+  const [report, setReport] = useState<any>(null);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const messageEndRef = useRef<HTMLDivElement>(null);
+  const msgIdxRef = useRef(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const messageEndRef = useRef<HTMLDivElement | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const speakTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceRef = useRef<NodeJS.Timeout | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const userWordsRef = useRef(\"\");
+  const speakingSecsRef = useRef(0);
 
-  const topics = [
-    "Is AI replacing software developers?",
-    "Remote work vs. Onsite workplace models",
-    "Cryptocurrency: Financial revolution or speculative bubble?",
-    "Social media: Connecting people or increasing isolation?"
-  ];
+  const token = typeof window !== \"undefined\" ? (localStorage.getItem(\"token\") || \"mock_token\") : \"mock_token\";
 
-  const aiParticipants = [
-    { name: "Priya Sharma", avatar: "PS", color: "from-pink-500 to-rose-500", role: "Analytical & Structured" },
-    { name: "Rohan Das", avatar: "RD", color: "from-blue-500 to-indigo-500", role: "Pragmatic & Technical" },
-    { name: "Vikram Mehta", avatar: "VM", color: "from-emerald-500 to-teal-500", role: "Aggressive debater" },
-    { name: "Emily Watson", avatar: "EW", color: "from-amber-500 to-orange-500", role: "Collaborative & Synthesizing" },
-    { name: "Kabir Sen", avatar: "KS", color: "from-violet-500 to-purple-500", role: "Skeptical & Quality focused" }
-  ];
-
-  const dialoguePool: Record<string, string[]> = {
-    "Priya Sharma": [
-      "Let's look at the numbers. AI tools like GitHub Copilot are boosting developer throughput by 55%, but that doesn't mean developer counts will drop. Historically, higher productivity expands the software market, leading to more development demand, not less.",
-      "Building on that, we must distinguish between writing simple syntax and designing systemic solutions. Software engineering is 90% logic planning, architecture design, and database structuring. Code generation is the last 10%.",
-      "I agree with Rohan's point about security. If junior developers copy-paste AI code blindly, it increases security debt. That makes human oversight more critical than ever."
-    ],
-    "Rohan Das": [
-      "I agree with Priya's analysis. AI is essentially a high-speed calculator for syntax. But who handles system debugs when the AI outputs hallucinations? Human developers will simply transition into system checkers and prompts reviewers.",
-      "Also, we should consider that AI does not understand business logic. A product owner cannot simply tell an AI to build a customized logistics engine without highly specific technical instructions, which only a software architect can devise.",
-      "Precisely. We are moving from syntax-level programming to higher-level design, which actually makes systems design skills much more important."
-    ],
-    "Vikram Mehta": [
-      "I disagree slightly. I think we are downplaying the speed of AI growth. Generative models can already build complete Next.js boilerplate systems in seconds. In 5 years, a single architect using AI tools might replace a team of 4 junior developers.",
-      "Yes, but my point is that junior hiring numbers will definitely contract. If senior developers become 10x faster, why would companies hire entry-level coders to write standard tests? That's the real threat we should talk about.",
-      "That is why upskilling in system designs, clouds, and deployment is the only way for job seekers to survive this shift."
-    ],
-    "Emily Watson": [
-      "That's an interesting point, Vikram. But instead of focusing on headcount reduction, look at how AI enables creativity. Now, a single developer can launch a complete MVP startup in days. AI democratizes engineering, allowing more projects to get funded.",
-      "Let's synthesize these ideas. Priya highlights system design, and Vikram notes junior hiring challenges. Doesn't this mean placement prep must shift from basic syntax to architectural logic and validation patterns?",
-      "I think Alex's interjection was highly relevant. Human collaboration is something AI cannot duplicate. Team communication is what truly builds products."
-    ],
-    "Kabir Sen": [
-      "Wait, what about the licensing and security liabilities? Copilot models are trained on public repos, which introduces potential copyright issues. Enterprise SaaS products cannot risk raw AI code without massive human review pipelines.",
-      "Exactly, Kabir here. We are ignoring code ownership. Who owns the IP of an AI-generated repository? This legal ambiguity will slow enterprise adoption of full AI coding tools.",
-      "Let's also not forget testing. AI code often lacks unit test coverage unless explicitly prompted, and even then, logical edges get missed. Human test engineering remains essential."
-    ]
-  };
-
+  // Load voices and check resume
   useEffect(() => {
+    const loadVoices = () => setVoices(window.speechSynthesis?.getVoices() || []);
+    loadVoices();
+    window.speechSynthesis?.addEventListener(\"voiceschanged\", loadVoices);
+    checkResume();
     return () => {
-      clearDiscussionInterval();
-      if (videoRef.current && videoRef.current.srcObject) {
-        const mediaStream = videoRef.current.srcObject as MediaStream;
-        mediaStream.getTracks().forEach(track => track.stop());
-      }
+      cleanup();
+      window.speechSynthesis?.removeEventListener(\"voiceschanged\", loadVoices);
     };
   }, []);
 
   useEffect(() => {
-    // Scroll chat to bottom
-    if (messageEndRef.current) {
-      messageEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, activeSpeaker]);
+    messageEndRef.current?.scrollIntoView({ behavior: \"smooth\" });
+  }, [messages]);
 
-  const clearDiscussionInterval = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const startMedia = async () => {
+  async function checkResume() {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      setWebcamActive(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        videoRef.current.play().catch(e => console.log("Play failed: ", e));
-      }
-    } catch (err) {
-      console.warn("Media devices blocked:", err);
+      const res = await fetch(\"http://127.0.0.1:8001/resume/latest\", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setHasResume(res.ok);
+    } catch {
+      setHasResume(false);
     }
-  };
+  }
 
-  const stopMedia = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const mediaStream = videoRef.current.srcObject as MediaStream;
-      mediaStream.getTracks().forEach(track => track.stop());
+  // ── TTS with participant-specific voice ────────────────────────────────────
+  function speakAs(text: string, voiceIdx: number, onEnd?: () => void) {
+    if (typeof window === \"undefined\" || !window.speechSynthesis) { onEnd?.(); return; }
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.92 + voiceIdx * 0.02;
+    utt.pitch = 0.8 + voiceIdx * 0.1;
+    if (voices.length > 0) {
+      utt.voice = voices[voiceIdx % voices.length];
+    }
+    utt.onend = () => onEnd?.();
+    utt.onerror = () => onEnd?.();
+    window.speechSynthesis.speak(utt);
+  }
+
+  // ── Start camera ───────────────────────────────────────────────────────────
+  async function startMedia() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setWebcamOn(true);
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(() => {}); }
+    } catch { console.warn(\"Media blocked\"); }
+  }
+
+  function stopMedia() {
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
       videoRef.current.srcObject = null;
     }
-    setWebcamActive(false);
-  };
+    setWebcamOn(false);
+  }
 
-  const startSpeechRecognition = () => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert("Speech Recognition not supported in this browser. Please use Chrome or Safari.");
-        return;
+  // ── Speech recognition for user ───────────────────────────────────────────
+  function startListeningForUser() {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = \"en-US\";
+    recognitionRef.current = rec;
+    rec.onstart = () => setIsListening(true);
+    rec.onresult = (e: any) => {
+      let interim = \"\", final = \"\";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) { final += t + \" \"; } else { interim += t; }
       }
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = "en-US";
+      if (final) {
+        userWordsRef.current += final;
+        speakingSecsRef.current += 1;
+        setSpeakingTime(s => s + 1);
+      }
+      setLiveTranscript(userWordsRef.current + interim);
 
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
+      // Reset silence timer
+      if (silenceRef.current) clearTimeout(silenceRef.current);
+      silenceRef.current = setTimeout(() => {
+        if (userWordsRef.current.trim()) {
+          const spokenText = userWordsRef.current.trim();
+          userWordsRef.current = \"\";
+          // Post user message
+          setMessages(prev => [...prev, {
+            speaker: \"You\", avatar: \"ME\",
+            color: \"from-indigo-600 to-indigo-700\",
+            text: spokenText, isUser: true
+          }]);
+          // Emily responds
+          setTimeout(() => {
+            const emilyLine = `That's an insightful point. Building on what you just said — ${topic.toLowerCase()} ultimately depends on individual perspective and market context.`;
+            setActiveSpeaker(\"Emily Watson\");
+            speakAs(emilyLine, 0, () => {
+              setMessages(prev => [...prev, {
+                speaker: \"Emily Watson\", avatar: \"EW\",
+                color: \"from-amber-500 to-orange-500\",
+                text: emilyLine, isUser: false
+              }]);
+              setActiveSpeaker(null);
+            });
+          }, 1200);
+        }
+      }, 2000);
+    };
+    rec.onerror = () => setIsListening(false);
+    rec.onend = () => setIsListening(false);
+    rec.start();
+  }
 
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setUserInput(transcript);
-      };
+  function stopListening() {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    if (silenceRef.current) clearTimeout(silenceRef.current);
+    setIsListening(false);
+  }
 
-      recognition.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognition.start();
-    }
-  };
-
-  const startDiscussion = () => {
-    setActiveDiscussion(true);
+  // ── Start GD ──────────────────────────────────────────────────────────────
+  async function startDiscussion() {
+    setActive(true);
     setMessages([]);
     setReport(null);
-    clearDiscussionInterval();
-    startMedia();
+    msgIdxRef.current = 0;
+    userWordsRef.current = \"\";
+    speakingSecsRef.current = 0;
+    setSpeakingTime(0);
+    setLiveTranscript(\"\");
+    await startMedia();
+    startListeningForUser();
 
-    // Trigger initial message from Priya
-    let msgIdx = 0;
-    const activeParticipants = [...aiParticipants];
+    // Moderator opens
+    const opener = `Welcome everyone. Today's group discussion topic is: ${topic}. Let's begin. Priya, please start.`;
+    speakAs(opener, 0, () => postNextAIMessage());
 
-    const postNextAIMessage = () => {
-      if (msgIdx >= 10) {
-        endDiscussion();
-        return;
-      }
-
-      // Pick a random participant
-      const speaker = activeParticipants[msgIdx % activeParticipants.length];
-      setActiveSpeaker(speaker.name);
-
-      setTimeout(() => {
-        const lines = dialoguePool[speaker.name];
-        const lineText = lines[Math.floor(msgIdx / activeParticipants.length) % lines.length];
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            speaker: speaker.name,
-            avatar: speaker.avatar,
-            color: speaker.color,
-            text: lineText,
-            isUser: false
-          }
-        ]);
-        setActiveSpeaker(null);
-        msgIdx++;
-      }, 1000); // 1s typing delay
-    };
-
-    postNextAIMessage();
-
-    // Run discussion queue every 7 seconds
+    // Schedule AI turns every 9s
     timerRef.current = setInterval(() => {
-      postNextAIMessage();
-    }, 7500);
-  };
+      if (msgIdxRef.current < 10) postNextAIMessage();
+      else endDiscussion();
+    }, 9000);
 
-  const endDiscussion = () => {
-    clearDiscussionInterval();
-    setActiveDiscussion(false);
-    setActiveSpeaker(null);
-    stopMedia();
-
-    // Compute grading report
-    // Score based on whether user sent messages (participation)
-    const hasParticipated = messages.some(m => m.isUser);
-    
-    setReport({
-      communication_score: hasParticipated ? 84 : 40,
-      leadership_score: hasParticipated ? 80 : 30,
-      logical_thinking: hasParticipated ? 86 : 30,
-      confidence_score: hasParticipated ? 82 : 30,
-      speaking_time: hasParticipated ? "45 Seconds" : "0 Seconds",
-      feedback: hasParticipated 
-        ? "Excellent interjection. You constructively addressed the impact on junior developer roles. Good synthesis of other candidates' points. Keep structuring your remarks with a clear start and conclusion."
-        : "You did not participate in the discussion. In group rounds, it's vital to raise your hand and make at least 2 structured points."
-    });
-  };
-
-  const handleInterject = () => {
-    if (!userInput.trim()) return;
-
-    // Post User argument
-    setMessages((prev) => [
-      ...prev,
-      {
-        speaker: "Alex Mercer (You)",
-        avatar: "AM",
-        color: "from-indigo-600 to-indigo-700",
-        text: userInput,
-        isUser: true
+    // Prompt user if silent for 30s
+    speakTimerRef.current = setInterval(() => {
+      if (speakingSecsRef.current === 0 && msgIdxRef.current > 2) {
+        speakAs(\"You — what is your view on this topic?\", 1);
       }
-    ]);
-    
-    const submittedText = userInput;
-    setUserInput("");
+    }, 30000);
+  }
 
-    // Simulate AI responsive triggers (Emily replies to User)
-    setTimeout(() => {
-      setActiveSpeaker("Emily Watson");
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            speaker: "Emily Watson",
-            avatar: "EW",
-            color: "from-amber-500 to-orange-500",
-            text: `Alex points out an essential concept. The shift isn't about replacing engineers, it's about shifting their focus. If we spend less time writing simple boilerplates, we can spend more time optimizing APIs and securing data pipelines.`,
-            isUser: false
-          }
-        ]);
-        setActiveSpeaker(null);
-      }, 1200);
-    }, 1500);
-  };
+  function postNextAIMessage() {
+    const idx = msgIdxRef.current;
+    const participant = AI_PARTICIPANTS[idx % AI_PARTICIPANTS.length];
+    setActiveSpeaker(participant.name);
+    const lines = DIALOGUES[participant.name];
+    const line = lines[Math.floor(idx / AI_PARTICIPANTS.length) % lines.length];
+    speakAs(line, participant.voiceIdx, () => {
+      setMessages(prev => [...prev, {
+        speaker: participant.name, avatar: participant.avatar,
+        color: participant.color, text: line, isUser: false
+      }]);
+      setActiveSpeaker(null);
+    });
+    msgIdxRef.current++;
+  }
 
-  return (
-    <div className="flex flex-col gap-8 py-4">
-      {/* Title */}
-      <div className="border-b border-zinc-900 pb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+  function cleanup() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (speakTimerRef.current) clearInterval(speakTimerRef.current);
+    stopListening();
+    stopMedia();
+    window.speechSynthesis?.cancel();
+  }
+
+  function endDiscussion() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (speakTimerRef.current) clearInterval(speakTimerRef.current);
+    setActive(false);
+    setActiveSpeaker(null);
+    stopListening();
+    stopMedia();
+    window.speechSynthesis?.cancel();
+
+    const participated = speakingSecsRef.current > 0;
+    const secs = speakingSecsRef.current;
+    setReport({
+      communication: participated ? Math.min(95, 65 + secs * 2) : 30,
+      leadership: participated ? Math.min(90, 60 + secs * 1.5) : 25,
+      logical: participated ? Math.min(92, 68 + secs * 1.8) : 28,
+      confidence: participated ? Math.min(88, 62 + secs * 2) : 30,
+      speaking_time: `${secs} seconds`,
+      verdict: participated
+        ? secs >= 10
+          ? \"Excellent participation. You made structured points and responded to peers effectively.\"
+          : \"You participated but could speak more. Aim for at least 3 contributions in a GD.\"
+        : \"You did not speak in the discussion. In real GDs, participation is mandatory — raise your points confidently.\",
+    });
+  }
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (hasResume === null) {
+    return (
+      <div className=\"flex flex-col items-center justify-center min-h-[60vh] gap-4\">
+        <div className=\"w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin\" />
+        <p className=\"text-zinc-400 text-sm\">Loading...</p>
+      </div>
+    );
+  }
+
+  // ── No Resume ─────────────────────────────────────────────────────────────
+  if (!hasResume) {
+    return (
+      <div className=\"flex flex-col items-center justify-center min-h-[70vh] gap-6 text-center px-4\">
+        <div className=\"p-5 bg-rose-500/10 border border-rose-500/20 rounded-full\">
+          <FileX className=\"w-12 h-12 text-rose-400\" />
+        </div>
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">AI Group Discussion Simulator</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Simulate dynamic debates with AI candidates, testing coordination, logical arguments, and interjection speeds.
+          <h1 className=\"text-2xl font-extrabold text-white\">Resume Required</h1>
+          <p className=\"text-zinc-400 text-sm mt-2 max-w-sm\">
+            The AI Group Discussion uses your resume to evaluate your responses in context. 
+            Please upload your resume first.
           </p>
+        </div>
+        <a href=\"/resume-analyzer\" className=\"flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all\">
+          <Upload className=\"w-4 h-4\" /> Upload Your Resume
+        </a>
+      </div>
+    );
+  }
+
+  // ── Main GD UI ────────────────────────────────────────────────────────────
+  return (
+    <div className=\"flex flex-col gap-6 py-4\">
+      <div className=\"border-b border-zinc-800 pb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3\">
+        <div>
+          <h1 className=\"text-3xl font-extrabold tracking-tight\">AI Group Discussion</h1>
+          <p className=\"text-zinc-400 text-sm mt-1\">Debate with AI participants via voice — no typing allowed. Your mic captures your points automatically.</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Left config column */}
-        <div className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-5 h-fit lg:col-span-1">
-          <span className="text-xs font-bold text-zinc-400 tracking-wider uppercase block border-b border-zinc-800 pb-2">
-            Discussion Settings
-          </span>
-
-          {/* Topic Select */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-zinc-400">Select Topic</label>
+      <div className=\"grid grid-cols-1 lg:grid-cols-4 gap-6\">
+        {/* Left Config */}
+        <div className=\"lg:col-span-1 flex flex-col gap-4\">
+          {/* Topic */}
+          <div className=\"p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-3\">
+            <span className=\"text-xs font-bold text-zinc-400 uppercase\">GD Settings</span>
             <select
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              disabled={activeDiscussion}
-              className="bg-zinc-950 border border-zinc-800 text-xs p-2.5 rounded-lg text-zinc-300 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+              value={topic} onChange={e => setTopic(e.target.value)} disabled={active}
+              className=\"bg-zinc-950 border border-zinc-800 text-xs p-2.5 rounded-lg text-zinc-300 focus:outline-none disabled:opacity-50\"
             >
-              {topics.map((t, idx) => (
-                <option key={idx} value={t}>{t}</option>
-              ))}
+              {TOPICS.map((t, i) => <option key={i} value={t}>{t}</option>)}
             </select>
-          </div>
 
-          {/* User Live Feed (Webcam Stream) */}
-          <div className="flex flex-col gap-2 border-t border-zinc-800/50 pt-3 mt-1">
-            <span className="text-xs font-semibold text-zinc-400 text-left">Your Feed (Live)</span>
-            <div className="w-full flex items-center justify-center">
-              <div className="w-28 h-28 rounded-full border-2 border-indigo-500 overflow-hidden relative bg-zinc-950 flex items-center justify-center shadow-lg">
-                {webcamActive ? (
-                  <video 
-                    ref={videoRef} 
-                    className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" 
-                    autoPlay 
-                    muted 
-                    playsInline 
-                  />
-                ) : (
-                  <div className="text-[10px] text-zinc-500 text-center px-2">Camera Off</div>
-                )}
+            {/* Your feed */}
+            <div className=\"flex flex-col gap-2 border-t border-zinc-800/50 pt-3\">
+              <span className=\"text-xs font-semibold text-zinc-400\">Your Feed</span>
+              <div className=\"w-full aspect-video rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 relative flex items-center justify-center\">
+                <video ref={videoRef} className=\"absolute inset-0 w-full h-full object-cover scale-x-[-1]\" autoPlay muted playsInline />
+                {!webcamOn && <VideoOff className=\"w-8 h-8 text-zinc-700\" />}
                 {isListening && (
-                  <span className="absolute bottom-1 right-1 flex h-3.5 w-3.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-500"></span>
-                  </span>
+                  <div className=\"absolute bottom-2 left-2 flex items-center gap-1 bg-black/70 px-2 py-0.5 rounded\">
+                    <span className=\"w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping\" />
+                    <span className=\"text-[9px] text-rose-400\">MIC ON</span>
+                  </div>
                 )}
               </div>
             </div>
-          </div>
 
-          {/* AI Participants List */}
-          <div className="flex flex-col gap-2.5 mt-2">
-            <span className="text-xs font-semibold text-zinc-400">Participants (5 AI)</span>
-            <div className="flex flex-col gap-2">
-              {aiParticipants.map((p, idx) => (
-                <div key={idx} className="flex items-center gap-2 bg-zinc-950/40 border border-zinc-900 p-2 rounded-lg">
-                  <div className={`w-6 h-6 rounded-full bg-gradient-to-br ${p.color} flex items-center justify-center font-bold text-white text-[9px] shrink-0`}>
-                    {p.avatar}
+            {/* Participants */}
+            <div className=\"flex flex-col gap-1.5\">
+              <span className=\"text-xs font-semibold text-zinc-400\">AI Participants</span>
+              {AI_PARTICIPANTS.map((p, i) => (
+                <div key={i} className={`flex items-center gap-2 p-2 rounded-lg transition-all ${activeSpeaker === p.name ? \"bg-indigo-500/10 border border-indigo-500/20\" : \"bg-zinc-950/40\"}`}>
+                  <div className={`w-6 h-6 rounded-full bg-gradient-to-br ${p.color} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{p.avatar}</div>
+                  <div>
+                    <p className=\"text-[10px] font-bold text-zinc-200\">{p.name}</p>
+                    <p className=\"text-[8px] text-zinc-600\">{p.role}</p>
                   </div>
-                  <div className="flex flex-col text-left">
-                    <span className="text-[10px] font-bold text-zinc-200">{p.name}</span>
-                    <span className="text-[8px] text-zinc-500 italic">{p.role}</span>
-                  </div>
+                  {activeSpeaker === p.name && <span className=\"ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse\" />}
                 </div>
               ))}
             </div>
-          </div>
 
-          {/* Start Action */}
-          {!activeDiscussion ? (
-            <button
-              onClick={startDiscussion}
-              className="w-full py-2.5 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow"
-            >
-              <Play className="w-3.5 h-3.5" />
-              <span>Start Group Discussion</span>
-            </button>
-          ) : (
-            <button
-              onClick={endDiscussion}
-              className="w-full py-2.5 bg-zinc-800 text-zinc-200 text-xs font-semibold rounded-xl hover:bg-zinc-700 hover:text-white transition-all flex items-center justify-center gap-2"
-            >
-              <Square className="w-3.5 h-3.5" />
-              <span>End & Grade Round</span>
-            </button>
-          )}
+            {!active ? (
+              <button onClick={startDiscussion} className=\"w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2\">
+                <Play className=\"w-3.5 h-3.5\" /> Start GD
+              </button>
+            ) : (
+              <button onClick={endDiscussion} className=\"w-full py-2.5 bg-zinc-800 text-zinc-200 text-xs font-semibold rounded-xl hover:bg-zinc-700 flex items-center justify-center gap-2\">
+                <Square className=\"w-3.5 h-3.5\" /> End & Get Report
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Right Debating arena */}
-        <div className="lg:col-span-3 flex flex-col gap-6">
-          {/* Discussion screen */}
-          <div className="p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col justify-between h-[450px]">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-3">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-indigo-400" />
-                <span className="text-xs font-bold text-zinc-200 truncate max-w-[200px] sm:max-w-md">
-                  GD Arena: {topic}
-                </span>
+        {/* Right: discussion */}
+        <div className=\"lg:col-span-3 flex flex-col gap-4\">
+          {/* Chat */}
+          <div className=\"p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col h-[420px]\">
+            <div className=\"flex items-center justify-between border-b border-zinc-800 pb-3 mb-3\">
+              <div className=\"flex items-center gap-2\">
+                <Users className=\"w-4 h-4 text-indigo-400\" />
+                <span className=\"text-xs font-bold text-zinc-200 truncate max-w-xs\">{topic}</span>
               </div>
               {activeSpeaker && (
-                <div className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
-                  <span className="text-[10px] text-indigo-400 font-bold font-mono">
-                    {activeSpeaker} is typing...
-                  </span>
+                <div className=\"flex items-center gap-1\">
+                  <span className=\"w-2 h-2 rounded-full bg-indigo-500 animate-ping\" />
+                  <span className=\"text-[10px] text-indigo-400 font-bold\">{activeSpeaker} speaking...</span>
                 </div>
               )}
             </div>
 
-            {/* Chat list */}
-            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 scrollbar">
+            <div className=\"flex-1 overflow-y-auto flex flex-col gap-3 pr-1\">
               {messages.length === 0 && (
-                <div className="h-full flex flex-col items-center justify-center text-zinc-600 text-xs gap-1.5">
-                  <MessageSquareCode className="w-8 h-8 text-zinc-700" />
-                  <span>Configure the topic and click Start to begin the mock debate.</span>
+                <div className=\"h-full flex flex-col items-center justify-center text-zinc-600 text-xs gap-2\">
+                  <Users className=\"w-8 h-8 text-zinc-700\" />
+                  <span>Click Start GD — then speak to participate</span>
                 </div>
               )}
-
-              {messages.map((m, idx) => (
-                <div 
-                  key={idx} 
-                  className={`flex gap-3 max-w-[85%] ${
-                    m.isUser ? "self-end flex-row-reverse" : "self-start"
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 select-none bg-gradient-to-br ${m.color} text-white shadow-sm`}>
-                    {m.avatar}
-                  </div>
-                  <div className="flex flex-col gap-1 text-left">
-                    <span className="text-[10px] text-zinc-500 font-bold">{m.speaker}</span>
-                    <div className={`p-3.5 rounded-xl text-xs leading-relaxed ${
-                      m.isUser 
-                        ? "bg-indigo-600 text-white" 
-                        : "bg-zinc-950/60 border border-zinc-850 text-zinc-300"
-                    }`}>
+              {messages.map((m, i) => (
+                <div key={i} className={`flex gap-2.5 max-w-[85%] ${m.isUser ? \"self-end flex-row-reverse\" : \"self-start\"}`}>
+                  <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${m.color} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{m.avatar}</div>
+                  <div className=\"flex flex-col gap-0.5\">
+                    <span className=\"text-[10px] text-zinc-500 font-bold\">{m.speaker}</span>
+                    <div className={`p-3 rounded-xl text-xs leading-relaxed ${m.isUser ? \"bg-indigo-600 text-white\" : \"bg-zinc-950/60 border border-zinc-800 text-zinc-300\"}`}>
                       {m.text}
                     </div>
                   </div>
@@ -420,64 +413,43 @@ export default function GroupDiscussionRoom() {
               <div ref={messageEndRef} />
             </div>
 
-            {/* User Argument Input */}
-            <div className="flex gap-2 border-t border-zinc-800 pt-3 mt-3">
-              <input 
-                type="text" 
-                placeholder={activeDiscussion ? "Type your point to interject in the conversation..." : "Start the GD to interact..."}
-                disabled={!activeDiscussion}
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleInterject(); }}
-                className="flex-1 bg-zinc-950 border border-zinc-850 text-xs px-3 py-2.5 rounded-xl text-zinc-300 focus:outline-none focus:border-indigo-500 placeholder-zinc-600 disabled:opacity-50"
-              />
-              <button
-                disabled={!activeDiscussion}
-                onClick={startSpeechRecognition}
-                className={`p-2.5 rounded-xl border transition-all flex items-center justify-center ${
-                  isListening
-                    ? "bg-rose-600 border-rose-500 text-white animate-pulse"
-                    : "bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 disabled:opacity-50"
-                }`}
-                title="Speak argument"
-              >
-                <Mic className="w-4 h-4" />
-              </button>
-              <button
-                disabled={!activeDiscussion}
-                onClick={handleInterject}
-                className="p-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl active:scale-95 transition-all flex items-center justify-center shadow"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+            {/* Voice indicator */}
+            <div className=\"border-t border-zinc-800 pt-3 mt-3 flex items-center gap-3\">
+              <div className={`flex items-center gap-2 flex-1 p-2.5 rounded-xl border ${isListening ? \"border-rose-500/40 bg-rose-500/5\" : \"border-zinc-800 bg-zinc-950/30\"}`}>
+                {isListening ? <><span className=\"w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0\" /><span className=\"text-xs text-rose-400\">🎙️ Listening — speak to join the discussion</span></> : <><Mic className=\"w-3.5 h-3.5 text-zinc-600\" /><span className=\"text-xs text-zinc-600\">{active ? \"Your mic is ready — just start speaking\" : \"Start the GD to activate your microphone\"}</span></>}
+              </div>
             </div>
           </div>
 
-          {/* Grading metrics display */}
+          {/* Live transcript */}
+          {active && (
+            <div className=\"p-4 bg-zinc-900/30 border border-zinc-800/50 rounded-xl\">
+              <p className=\"text-[10px] text-zinc-600 font-bold uppercase mb-1\">Your Live Transcript</p>
+              <p className=\"text-xs text-zinc-400\">{liveTranscript || <span className=\"italic text-zinc-700\">Speak into your microphone...</span>}</p>
+              <p className=\"text-[10px] text-zinc-600 mt-1\">Speaking time: {speakingTime}s</p>
+            </div>
+          )}
+
+          {/* Report */}
           {report && (
-            <div className="flex flex-col gap-6">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className=\"flex flex-col gap-4\">
+              <div className=\"grid grid-cols-2 lg:grid-cols-4 gap-3\">
                 {[
-                  { label: "Logical Consistency", score: report.logical_thinking, color: "text-indigo-400" },
-                  { label: "Communication Flow", score: report.communication_score, color: "text-violet-400" },
-                  { label: "Leadership Presence", score: report.leadership_score, color: "text-emerald-400" },
-                  { label: "Speaking Duration", score: report.speaking_time, color: "text-amber-500", isTime: true }
-                ].map((item, idx) => (
-                  <div key={idx} className="p-4 bg-zinc-900/40 border border-zinc-800/80 rounded-xl flex flex-col gap-1 items-center justify-center text-center">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{item.label}</span>
-                    <span className={`text-2xl font-extrabold ${item.color}`}>
-                      {item.isTime ? item.score : `${item.score}/100`}
-                    </span>
+                  { label: \"Logical\", score: report.logical, color: \"text-indigo-400\" },
+                  { label: \"Communication\", score: report.communication, color: \"text-violet-400\" },
+                  { label: \"Leadership\", score: report.leadership, color: \"text-emerald-400\" },
+                  { label: \"Confidence\", score: report.confidence, color: \"text-amber-400\" },
+                ].map((item, i) => (
+                  <div key={i} className=\"p-4 bg-zinc-900/40 border border-zinc-800/80 rounded-xl text-center\">
+                    <span className=\"text-[10px] font-bold text-zinc-500 uppercase block\">{item.label}</span>
+                    <span className={`text-2xl font-extrabold ${item.color}`}>{item.score}<span className=\"text-sm text-zinc-600\">/100</span></span>
                   </div>
                 ))}
               </div>
-
-              {/* Evaluator feedback */}
-              <div className="p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col gap-3">
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">AI Moderator Evaluation Report</span>
-                <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/45 p-3.5 border border-zinc-850 rounded-xl">
-                  {report.feedback}
-                </p>
+              <div className=\"p-5 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl\">
+                <span className=\"text-xs font-bold text-zinc-400 uppercase block mb-2\">AI Moderator Evaluation</span>
+                <p className=\"text-xs text-zinc-300 leading-relaxed bg-zinc-950/40 p-3 rounded-xl border border-zinc-850\">{report.verdict}</p>
+                <p className=\"text-[11px] text-zinc-500 mt-2\">Speaking time: {report.speaking_time}</p>
               </div>
             </div>
           )}

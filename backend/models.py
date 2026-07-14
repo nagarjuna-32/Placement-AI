@@ -81,10 +81,14 @@ class InterviewAttempt(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=True)
     level = Column(Integer, nullable=False)
     score = Column(Integer, default=0)
     feedback = Column(Text, nullable=True)
-    video_analysis = Column(JSON, nullable=True)       # expressions, eye contact, etc.
+    was_terminated = Column(Boolean, default=False)
+    termination_reason = Column(Text, nullable=True)
+    questions_data = Column(JSON, nullable=True)        # Full Q&A session replay
+    video_analysis = Column(JSON, nullable=True)        # expressions, eye contact, etc.
     communication_metrics = Column(JSON, nullable=True) # speed, filler words, pronunciation, confidence
     is_deleted = Column(Boolean, default=False)
 

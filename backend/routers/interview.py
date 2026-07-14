@@ -94,6 +94,230 @@ def get_questions(level: int):
         raise HTTPException(status_code=404, detail="Level not found. Choose between 1 and 10.")
     return LEVEL_QUESTIONS[level]
 
+
+@router.post("/evaluate-answer", response_model=schemas.AnswerEvaluationOut)
+def evaluate_answer(
+    payload: schemas.AnswerEvaluationRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """Evaluate a spoken answer, return verdict (correct/wrong/partial) and AI response text."""
+    question = payload.question
+    answer = payload.spoken_answer.strip()
+    level = payload.level
+    topic = payload.topic
+    is_second_chance = payload.is_second_chance
+
+    # Empty or very short answer is wrong
+    if len(answer) < 10:
+        return schemas.AnswerEvaluationOut(
+            verdict="wrong",
+            score=10,
+            feedback="You did not provide a clear answer.",
+            ai_response="I didn't catch a proper answer. " + (
+                "Since this was your second chance, we'll have to end the interview." if is_second_chance
+                else "Let me give you one more chance to answer."
+            ),
+            follow_up_question=f"Let me ask you again — {question}" if not is_second_chance else None,
+            better_answer=f"A good answer would explain the core concept of {topic} clearly and concisely.",
+            keyword_hits=[]
+        )
+
+    # Try Gemini AI evaluation
+    try:
+        import google.generativeai as genai
+        import os, json
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            prompt = f"""You are a strict technical interviewer evaluating a candidate's spoken answer.
+
+Question: {question}
+Topic: {topic}
+Difficulty: {level}
+Candidate's Answer: {answer}
+
+Evaluate strictly. Return ONLY a JSON object with these fields:
+- verdict: "correct" (score>=65), "partial" (score 40-64), or "wrong" (score<40)
+- score: integer 0-100
+- feedback: one sentence explaining what was right or wrong
+- ai_response: what the AI interviewer would say aloud (professional, direct, 1-2 sentences)
+- follow_up_question: if verdict is wrong and not second chance, a follow-up on the same topic; else null
+- better_answer: a concise correct answer (2-3 sentences)
+- keyword_hits: list of key terms the candidate mentioned correctly
+
+Be strict — wrong/irrelevant answers must get verdict "wrong". Partially correct gets "partial". Only clearly correct answers get "correct"."""
+            response = model.generate_content(prompt)
+            text = response.text.strip()
+            if "```" in text:
+                text = text.split("```")[1].replace("json", "").strip()
+            data = json.loads(text)
+            verdict = data.get("verdict", "wrong")
+            score = int(data.get("score", 30))
+            feedback = data.get("feedback", "")
+            ai_response = data.get("ai_response", "")
+            follow_up = data.get("follow_up_question")
+            better = data.get("better_answer", "")
+            hits = data.get("keyword_hits", [])
+
+            # Override ai_response for second-chance termination
+            if verdict == "wrong" and is_second_chance:
+                ai_response = f"That answer is still incorrect. {feedback} We'll have to end the interview here. Thank you for your time."
+                follow_up = None
+            elif verdict == "wrong" and not is_second_chance:
+                ai_response = f"That's not quite right. {feedback} I'll give you one more chance."
+
+            return schemas.AnswerEvaluationOut(
+                verdict=verdict,
+                score=score,
+                feedback=feedback,
+                ai_response=ai_response,
+                follow_up_question=follow_up,
+                better_answer=better,
+                keyword_hits=hits if isinstance(hits, list) else []
+            )
+    except Exception as e:
+        print(f"Gemini evaluate-answer failed: {e}, using keyword fallback")
+
+    # Keyword fallback evaluation
+    answer_lower = answer.lower()
+    topic_keywords = {
+        "python": ["python", "list", "dict", "tuple", "function", "class", "decorator", "lambda", "generator"],
+        "javascript": ["javascript", "function", "var", "let", "const", "promise", "async", "dom", "event"],
+        "sql": ["sql", "select", "join", "index", "primary", "foreign", "query", "table", "database"],
+        "react": ["react", "component", "state", "props", "hook", "render", "virtual", "dom", "useeffect"],
+        "docker": ["docker", "container", "image", "dockerfile", "volume", "compose", "port"],
+        "aws": ["aws", "ec2", "s3", "lambda", "cloud", "scale", "region", "availability"],
+        "fastapi": ["fastapi", "api", "endpoint", "pydantic", "router", "dependency", "async"],
+        "general": ["design", "architecture", "system", "scale", "database", "api", "service"],
+    }
+    topic_kws = topic_keywords.get(topic.lower(), topic_keywords["general"])
+    hits = [kw for kw in topic_kws if kw in answer_lower]
+    relevance_ratio = len(hits) / max(len(topic_kws), 1)
+
+    if relevance_ratio >= 0.4 and len(answer) > 30:
+        verdict, score = "correct", 72
+        ai_resp = "Good answer. Let's move on to the next question."
+        feedback = "You covered the key concepts well."
+        follow_up = None
+        better = f"A strong answer on {topic} should mention: {', '.join(topic_kws[:4])}."
+    elif relevance_ratio >= 0.2 or len(answer) > 60:
+        verdict, score = "partial", 52
+        ai_resp = "That's partially correct. You touched on some points but missed key details. Let's continue."
+        feedback = "Your answer was partially correct."
+        follow_up = None
+        better = f"A complete answer on {topic} should mention: {', '.join(topic_kws[:4])}."
+    else:
+        verdict, score = "wrong", 20
+        if is_second_chance:
+            ai_resp = f"That answer is still incorrect. A proper answer on {topic} should address: {', '.join(topic_kws[:3])}. We'll have to end the interview here."
+            follow_up = None
+        else:
+            ai_resp = f"That's not correct. Your answer didn't address the question about {topic}. I'll give you one more chance."
+            follow_up = f"Let me ask you again — {question}"
+        feedback = f"Your answer did not address the core concepts of {topic}."
+        better = f"The correct answer should explain: {', '.join(topic_kws[:4])}."
+
+    return schemas.AnswerEvaluationOut(
+        verdict=verdict,
+        score=score,
+        feedback=feedback,
+        ai_response=ai_resp,
+        follow_up_question=follow_up,
+        better_answer=better,
+        keyword_hits=hits
+    )
+
+
+@router.post("/save-report", response_model=schemas.InterviewReportOut)
+def save_interview_report(
+    report: schemas.InterviewReportSave,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """Save the full AI interview session report to the database."""
+    # Get latest resume id
+    resume = db.query(models.Resume).filter(
+        models.Resume.user_id == current_user.id,
+        models.Resume.is_deleted == False
+    ).order_by(models.Resume.id.desc()).first()
+    resume_id = resume.id if resume else None
+
+    # Calculate overall score
+    overall_score = (report.technical_score + report.communication_score + report.confidence_score) // 3
+
+    # Build summary feedback
+    verdict_text = "Needs significant improvement" if report.was_terminated else (
+        "Strong candidate" if overall_score >= 75 else "Shows promise, needs more preparation"
+    )
+    termination_note = f" Interview was terminated early: {report.termination_reason}." if report.was_terminated else ""
+
+    feedback_text = (
+        f"{verdict_text}.{termination_note} "
+        f"Technical: {report.technical_score}/100. "
+        f"Communication: {report.communication_score}/100. "
+        f"Confidence: {report.confidence_score}/100."
+    )
+
+    # Serialize question results
+    questions_data = [qr.model_dump() for qr in report.questions_results]
+
+    attempt = models.InterviewAttempt(
+        user_id=current_user.id,
+        resume_id=resume_id,
+        level=1,  # resume-based = level 1 (AI-driven)
+        score=overall_score,
+        feedback=feedback_text,
+        was_terminated=report.was_terminated,
+        termination_reason=report.termination_reason,
+        questions_data=questions_data,
+        video_analysis={
+            "expression_timeline": report.expression_timeline,
+            "confidence_score": report.confidence_score,
+        },
+        communication_metrics=report.communication_metrics
+    )
+
+    # Update subscription usage
+    usage = db.query(models.SubscriptionUsage).filter(
+        models.SubscriptionUsage.user_id == current_user.id
+    ).first()
+    if usage:
+        usage.interviews_used = (usage.interviews_used or 0) + 1
+
+    # Award XP
+    xp_gain = 50 if report.was_terminated else 200
+    current_user.xp = (current_user.xp or 0) + xp_gain
+    current_user.career_health_score = int(
+        ((current_user.career_health_score or 70) + overall_score) / 2
+    )
+
+    db.add(attempt)
+    db.commit()
+    db.refresh(attempt)
+
+    # Log activity
+    activity = models.UserActivity(
+        user_id=current_user.id,
+        action_name="ai_interview_complete",
+        details=f"AI Interview completed. Score: {overall_score}. Terminated: {report.was_terminated}"
+    )
+    db.add(activity)
+    db.commit()
+
+    return schemas.InterviewReportOut(
+        id=attempt.id,
+        user_id=attempt.user_id,
+        was_terminated=attempt.was_terminated,
+        technical_score=report.technical_score,
+        communication_score=report.communication_score,
+        confidence_score=report.confidence_score,
+        feedback=attempt.feedback,
+        video_analysis=attempt.video_analysis,
+        communication_metrics=attempt.communication_metrics
+    )
+
 @router.post("/submit", response_model=schemas.InterviewOut)
 def submit_attempt(
     attempt: schemas.InterviewCreate,

@@ -177,3 +177,180 @@ def get_latest_resume(
     if not resume:
         raise HTTPException(status_code=404, detail="No resume uploaded yet.")
     return resume
+
+
+@router.post("/interview-questions", response_model=schemas.ResumeInterviewQuestionsOut)
+def generate_interview_questions(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """Generate 15 resume-based interview questions (5 easy, 5 medium, 5 hard)."""
+    resume = db.query(models.Resume).filter(
+        models.Resume.user_id == current_user.id,
+        models.Resume.is_deleted == False
+    ).order_by(models.Resume.id.desc()).first()
+
+    if not resume:
+        raise HTTPException(
+            status_code=403,
+            detail="No resume found. Please upload and analyze your resume first before starting an interview."
+        )
+
+    skills = resume.extracted_skills or []
+    projects = resume.projects_analysis or []
+    missing = resume.missing_keywords or []
+    ats = resume.ats_score or 70
+
+    # Try Gemini AI first
+    questions_list = []
+    try:
+        import google.generativeai as genai
+        import os
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            skills_str = ", ".join(skills[:10]) if skills else "Python, SQL"
+            proj_str = "; ".join([p.get("title", "") for p in projects[:3]]) if projects else "web project"
+            prompt = f"""You are a professional technical interviewer. Generate exactly 15 interview questions based on this candidate's resume:
+Skills: {skills_str}
+Projects: {proj_str}
+ATS Score: {ats}
+
+Rules:
+- Questions 1-5: EASY (basic definitions, simple concepts from their skills)
+- Questions 6-10: MEDIUM (application of skills, project-related questions)
+- Questions 11-15: HARD (system design, advanced concepts, tricky edge cases)
+- Each question must directly relate to a skill or project from the resume
+- Be professional and direct like a real interviewer
+
+Return ONLY a JSON array of 15 objects, each with: level (easy/medium/hard), topic (skill name), question (the question text)
+Example: [{{"level":"easy","topic":"Python","question":"What is a list comprehension in Python?"}}]"""
+            response = model.generate_content(prompt)
+            text = response.text.strip()
+            # Extract JSON from response
+            if "```" in text:
+                text = text.split("```")[1].replace("json", "").strip()
+            import json
+            raw = json.loads(text)
+            for i, q in enumerate(raw[:15]):
+                questions_list.append(schemas.ResumeInterviewQuestion(
+                    id=i + 1,
+                    level=q.get("level", "easy"),
+                    topic=q.get("topic", "General"),
+                    question=q.get("question", "Tell me about yourself.")
+                ))
+    except Exception as e:
+        print(f"Gemini interview-questions failed: {e}, using fallback")
+
+    # Fallback: skill-based question bank
+    if len(questions_list) < 15:
+        questions_list = _build_fallback_questions(skills, projects, missing)
+
+    resume_summary = {
+        "ats_score": ats,
+        "skills": skills[:8],
+        "projects": [p.get("title", "") for p in projects[:3]],
+        "missing": missing[:5]
+    }
+
+    return schemas.ResumeInterviewQuestionsOut(
+        questions=questions_list,
+        resume_summary=resume_summary
+    )
+
+
+def _build_fallback_questions(skills, projects, missing):
+    """Build 15 questions from the resume skills when AI is unavailable."""
+    easy_bank = {
+        "python": [("Python", "What is the difference between a list and a tuple in Python?"),
+                   ("Python", "Explain what a Python decorator is and give a simple example.")],
+        "javascript": [("JavaScript", "What is the difference between let, const, and var in JavaScript?"),
+                       ("JavaScript", "Explain event bubbling in JavaScript.")],
+        "sql": [("SQL", "What is the difference between INNER JOIN and LEFT JOIN?"),
+                ("SQL", "Explain what a primary key and foreign key are.")],
+        "react": [("React", "What is the difference between state and props in React?"),
+                  ("React", "What is the virtual DOM and why does React use it?")],
+        "fastapi": [("FastAPI", "What is FastAPI and what makes it different from Flask?"),
+                    ("FastAPI", "Explain what Pydantic is and how it is used in FastAPI.")],
+        "docker": [("Docker", "What is a Docker container and how is it different from a VM?"),
+                   ("Docker", "What is a Dockerfile?")],
+        "aws": [("AWS", "What is the difference between EC2 and Lambda?"),
+                ("AWS", "What is S3 and what is it used for?")],
+        "git": [("Git", "What is the difference between git merge and git rebase?"),
+                ("Git", "Explain what a pull request is.")],
+    }
+    medium_bank = {
+        "python": [("Python", "How does Python's garbage collection work?"),
+                   ("Python", "Explain the GIL in Python and how it affects multithreading.")],
+        "javascript": [("JavaScript", "Explain the concept of closures in JavaScript with an example."),
+                       ("JavaScript", "What is the event loop in JavaScript?")],
+        "sql": [("SQL", "What is database indexing and when should you use it?"),
+                ("SQL", "Explain ACID properties in databases.")],
+        "react": [("React", "What are React hooks and why were they introduced?"),
+                  ("React", "Explain the useEffect hook and its cleanup function.")],
+        "docker": [("Docker", "Explain Docker Compose and when you would use it."),
+                   ("Docker", "What are Docker volumes and why are they important?")],
+        "aws": [("AWS", "Explain the difference between vertical and horizontal scaling on AWS."),
+                ("AWS", "What is a load balancer and when would you use one?")],
+    }
+    hard_bank = {
+        "python": [("Python", "Design a rate limiter in Python that handles 1000 requests per second."),
+                   ("Python", "Explain how you would optimize a slow database query in a Python application.")],
+        "sql": [("SQL", "Design a database schema for a social media platform with users, posts, and follows."),
+                ("SQL", "How would you handle database sharding for a table with 1 billion rows?")],
+        "react": [("React", "Explain React's reconciliation algorithm and how it determines what to re-render."),
+                  ("React", "How would you implement code splitting and lazy loading in a large React app?")],
+        "docker": [("Docker", "Explain a Kubernetes pod and how it differs from a Docker container."),
+                   ("Docker", "Design a CI/CD pipeline using Docker and GitHub Actions.")],
+        "aws": [("AWS", "Design a highly available architecture for a web app that serves 10 million users."),
+                ("AWS", "Explain how you would implement auto-scaling for a spike in traffic.")],
+    }
+    general_easy = [
+        ("General", "Tell me about yourself and your technical background."),
+        ("General", "What is object-oriented programming? Name its four pillars."),
+        ("General", "What is REST API and what are HTTP methods?"),
+    ]
+    general_medium = [
+        ("General", "Explain the MVC architectural pattern."),
+        ("General", "What is the difference between synchronous and asynchronous programming?"),
+        ("General", "Walk me through the architecture of your main project."),
+    ]
+    general_hard = [
+        ("General", "Design a URL shortener like Bit.ly. Explain the architecture."),
+        ("General", "What is system design? How would you design a chat application?"),
+        ("General", "How do you ensure code quality and prevent bugs in a production system?"),
+    ]
+
+    easy_qs, medium_qs, hard_qs = [], [], []
+    for skill in [s.lower() for s in skills]:
+        if skill in easy_bank and len(easy_qs) < 5:
+            easy_qs.extend(easy_bank[skill])
+        if skill in medium_bank and len(medium_qs) < 5:
+            medium_qs.extend(medium_bank[skill])
+        if skill in hard_bank and len(hard_qs) < 5:
+            hard_qs.extend(hard_bank[skill])
+
+    # Add project questions if we have projects
+    if projects and len(medium_qs) < 5:
+        proj_title = projects[0].get("title", "your project") if projects else "your project"
+        medium_qs.append(("Project", f"Walk me through the architecture and tech stack of '{proj_title}'."))
+        medium_qs.append(("Project", f"What was the most challenging bug you faced in '{proj_title}' and how did you fix it?"))
+
+    # Fill with general questions
+    while len(easy_qs) < 5:
+        easy_qs.append(general_easy[len(easy_qs) % len(general_easy)])
+    while len(medium_qs) < 5:
+        medium_qs.append(general_medium[len(medium_qs) % len(general_medium)])
+    while len(hard_qs) < 5:
+        hard_qs.append(general_hard[len(hard_qs) % len(general_hard)])
+
+    result = []
+    for i, (topic, q) in enumerate(easy_qs[:5]):
+        result.append(schemas.ResumeInterviewQuestion(id=i+1, level="easy", topic=topic, question=q))
+    for i, (topic, q) in enumerate(medium_qs[:5]):
+        result.append(schemas.ResumeInterviewQuestion(id=i+6, level="medium", topic=topic, question=q))
+    for i, (topic, q) in enumerate(hard_qs[:5]):
+        result.append(schemas.ResumeInterviewQuestion(id=i+11, level="hard", topic=topic, question=q))
+
+    return result
