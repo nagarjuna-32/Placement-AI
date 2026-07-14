@@ -29,7 +29,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/google", {
+      const res = await fetch("http://127.0.0.1:8001/auth/google", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: "google_mock_token_123" })
@@ -66,7 +66,7 @@ export default function LoginPage() {
     setForgotStatus("");
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/forgot-password", {
+      const res = await fetch("http://127.0.0.1:8001/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: forgotEmail })
@@ -98,7 +98,7 @@ export default function LoginPage() {
     setForgotStatus("");
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/reset-password", {
+      const res = await fetch("http://127.0.0.1:8001/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -133,7 +133,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/login", {
+      const res = await fetch("http://127.0.0.1:8001/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })

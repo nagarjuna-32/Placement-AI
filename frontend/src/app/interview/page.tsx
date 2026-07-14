@@ -101,7 +101,7 @@ export default function InterviewHub() {
     if (activeMode === "levels") {
       async function fetchQuestions() {
         try {
-          const res = await fetch(`http://127.0.0.1:8000/interview/questions/${selectedLevel}`);
+          const res = await fetch(`http://127.0.0.1:8001/interview/questions/${selectedLevel}`);
           if (res.ok) {
             const data = await res.json();
             setActiveQuestionSet(data);
@@ -116,7 +116,7 @@ export default function InterviewHub() {
     } else if (activeMode === "panel") {
       async function fetchPanelQuestions() {
         try {
-          const res = await fetch("http://127.0.0.1:8000/hr-panel/questions");
+          const res = await fetch("http://127.0.0.1:8001/hr-panel/questions");
           if (res.ok) {
             const data = await res.json();
             setPanelQuestions(data);
@@ -202,7 +202,7 @@ export default function InterviewHub() {
     
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch(`http://127.0.0.1:8000/interview/adaptive/start?target_role=${encodeURIComponent(targetRole)}&personality=${encodeURIComponent(personality)}&company=${encodeURIComponent(company)}`, {
+      const res = await fetch(`http://127.0.0.1:8001/interview/adaptive/start?target_role=${encodeURIComponent(targetRole)}&personality=${encodeURIComponent(personality)}&company=${encodeURIComponent(company)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
       });
@@ -363,7 +363,7 @@ export default function InterviewHub() {
         current_state: adaptiveState
       };
 
-      const res = await fetch("http://127.0.0.1:8000/interview/adaptive/next", {
+      const res = await fetch("http://127.0.0.1:8001/interview/adaptive/next", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload)
@@ -491,7 +491,7 @@ export default function InterviewHub() {
 
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      await fetch("http://127.0.0.1:8000/interview/submit", {
+      await fetch("http://127.0.0.1:8001/interview/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(reportData)
@@ -517,7 +517,7 @@ export default function InterviewHub() {
 
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/hr-panel/submit", {
+      const res = await fetch("http://127.0.0.1:8001/hr-panel/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ answers: ["ans1", "ans2", "ans3"] })

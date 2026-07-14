@@ -99,7 +99,7 @@ export default function ResumeAnalyzer() {
       formData.append("file", file);
       
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/resume/analyze", {
+      const res = await fetch("http://127.0.0.1:8001/resume/analyze", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -151,7 +151,7 @@ export default function ResumeAnalyzer() {
 
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/linkedin/optimize", {
+      const res = await fetch("http://127.0.0.1:8001/linkedin/optimize", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

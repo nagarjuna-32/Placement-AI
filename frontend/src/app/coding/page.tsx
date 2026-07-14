@@ -162,7 +162,7 @@ export default function CodingSandbox() {
 
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/github/analyze", {
+      const res = await fetch("http://127.0.0.1:8001/github/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -42,7 +42,7 @@ export default function CertificatesPage() {
   const fetchCertificates = async () => {
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/certificates/", {
+      const res = await fetch("http://127.0.0.1:8001/certificates/", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -141,7 +141,7 @@ export default function CertificatesPage() {
     setClaimingType(type);
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch(`http://127.0.0.1:8000/certificates/claim/${type}`, {
+      const res = await fetch(`http://127.0.0.1:8001/certificates/claim/${type}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });

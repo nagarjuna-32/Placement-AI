@@ -38,7 +38,7 @@ export default function VerifyCertificatePage({ params }: { params: Promise<{ id
     if (!id) return;
     const fetchVerification = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/certificates/verify/${id}`);
+        const res = await fetch(`http://127.0.0.1:8001/certificates/verify/${id}`);
         if (res.ok) {
           const data = await res.json();
           setDetails(data);

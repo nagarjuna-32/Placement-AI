@@ -49,7 +49,7 @@ export default function RecruiterDashboard() {
   const fetchAllCertificates = async () => {
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/certificates/admin/list", {
+      const res = await fetch("http://127.0.0.1:8001/certificates/admin/list", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -69,7 +69,7 @@ export default function RecruiterDashboard() {
     setRevokingId(certId);
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch(`http://127.0.0.1:8000/certificates/admin/revoke/${certId}`, {
+      const res = await fetch(`http://127.0.0.1:8001/certificates/admin/revoke/${certId}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -173,7 +173,7 @@ export default function RecruiterDashboard() {
 
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/jobs/", {
+      const res = await fetch("http://127.0.0.1:8001/jobs/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

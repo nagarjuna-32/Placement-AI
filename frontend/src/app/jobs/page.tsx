@@ -95,7 +95,7 @@ export default function JobsPage() {
         const token = localStorage.getItem("token") || "mock_token";
         
         // Fetch matched jobs
-        const res = await fetch("http://127.0.0.1:8000/jobs/matches", {
+        const res = await fetch("http://127.0.0.1:8001/jobs/matches", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -106,7 +106,7 @@ export default function JobsPage() {
         }
 
         // Fetch applications
-        const appsRes = await fetch("http://127.0.0.1:8000/tracker/applications", {
+        const appsRes = await fetch("http://127.0.0.1:8001/tracker/applications", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (appsRes.ok) {
@@ -117,7 +117,7 @@ export default function JobsPage() {
         }
 
         // Fetch market trends
-        const marketRes = await fetch("http://127.0.0.1:8000/market/trends");
+        const marketRes = await fetch("http://127.0.0.1:8001/market/trends");
         if (marketRes.ok) {
           const data = await marketRes.json();
           setMarketTrends(data);
@@ -178,7 +178,7 @@ export default function JobsPage() {
 
   const triggerSmartSearch = async (role: string) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/jobs/search-links?role=${encodeURIComponent(role)}`);
+      const res = await fetch(`http://127.0.0.1:8001/jobs/search-links?role=${encodeURIComponent(role)}`);
       if (res.ok) {
         const data = await res.json();
         setSearchLinks(data);
@@ -216,7 +216,7 @@ export default function JobsPage() {
 
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/tracker/applications", {
+      const res = await fetch("http://127.0.0.1:8001/tracker/applications", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -249,7 +249,7 @@ export default function JobsPage() {
   const handleDeleteApplication = async (id: number) => {
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      await fetch(`http://127.0.0.1:8000/tracker/applications/${id}`, {
+      await fetch(`http://127.0.0.1:8001/tracker/applications/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -267,7 +267,7 @@ export default function JobsPage() {
     
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      await fetch(`http://127.0.0.1:8000/tracker/applications/${id}`, {
+      await fetch(`http://127.0.0.1:8001/tracker/applications/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -295,7 +295,7 @@ export default function JobsPage() {
     };
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/market/predict-salary", {
+      const res = await fetch("http://127.0.0.1:8001/market/predict-salary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)

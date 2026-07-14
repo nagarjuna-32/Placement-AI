@@ -42,7 +42,7 @@ export default function CareerAgentPage() {
     async function fetchCoachDirective() {
       try {
         const token = localStorage.getItem("token") || "mock_token";
-        const res = await fetch("http://127.0.0.1:8000/career-agent/coach-directive", {
+        const res = await fetch("http://127.0.0.1:8001/career-agent/coach-directive", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -118,7 +118,7 @@ export default function CareerAgentPage() {
     
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/orchestrator/dispatch", {
+      const res = await fetch("http://127.0.0.1:8001/orchestrator/dispatch", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -228,7 +228,7 @@ export default function CareerAgentPage() {
 
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/career-agent/branding", {
+      const res = await fetch("http://127.0.0.1:8001/career-agent/branding", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

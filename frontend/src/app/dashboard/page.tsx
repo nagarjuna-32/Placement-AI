@@ -118,7 +118,7 @@ export default function StudentDashboard() {
     
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/orchestrator/dispatch", {
+      const res = await fetch("http://127.0.0.1:8001/orchestrator/dispatch", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -236,7 +236,7 @@ export default function StudentDashboard() {
       try {
         const token = localStorage.getItem("token") || "mock_token";
         
-        const readinessRes = await fetch("http://127.0.0.1:8000/profile/readiness", {
+        const readinessRes = await fetch("http://127.0.0.1:8001/profile/readiness", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (readinessRes.ok) {
@@ -244,7 +244,7 @@ export default function StudentDashboard() {
           setReadiness(data);
         }
 
-        const statsRes = await fetch("http://127.0.0.1:8000/tracker/stats", {
+        const statsRes = await fetch("http://127.0.0.1:8001/tracker/stats", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (statsRes.ok) {
@@ -252,7 +252,7 @@ export default function StudentDashboard() {
           setTrackerStats(data);
         }
 
-        const alertsRes = await fetch("http://127.0.0.1:8000/alerts/", {
+        const alertsRes = await fetch("http://127.0.0.1:8001/alerts/", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (alertsRes.ok) {
@@ -260,7 +260,7 @@ export default function StudentDashboard() {
           setAlerts(data);
         }
 
-        const subRes = await fetch("http://127.0.0.1:8000/profile/subscription", {
+        const subRes = await fetch("http://127.0.0.1:8001/profile/subscription", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (subRes.ok) {
@@ -286,7 +286,7 @@ export default function StudentDashboard() {
   const markAlertAsRead = async (id: number) => {
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      await fetch(`http://127.0.0.1:8000/alerts/read/${id}`, {
+      await fetch(`http://127.0.0.1:8001/alerts/read/${id}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -321,7 +321,7 @@ export default function StudentDashboard() {
     setDownloading(true);
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/reports/readiness", {
+      const res = await fetch("http://127.0.0.1:8001/reports/readiness", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) {
@@ -357,7 +357,7 @@ export default function StudentDashboard() {
     setUpgradeLoading(true);
     try {
       const token = localStorage.getItem("token") || "mock_token";
-      const res = await fetch("http://127.0.0.1:8000/payments/order", {
+      const res = await fetch("http://127.0.0.1:8001/payments/order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -371,7 +371,7 @@ export default function StudentDashboard() {
       const loaded = await loadRazorpayScript();
       if (!loaded || order.order_id.startsWith("order_mock")) {
         alert("Running offline sandbox payment checkout...");
-        const verifyRes = await fetch("http://127.0.0.1:8000/payments/verify", {
+        const verifyRes = await fetch("http://127.0.0.1:8001/payments/verify", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -400,7 +400,7 @@ export default function StudentDashboard() {
         description: `Upgrade to ${tier.toUpperCase()} Plan`,
         order_id: order.order_id,
         handler: async function (response: any) {
-          const verifyRes = await fetch("http://127.0.0.1:8000/payments/verify", {
+          const verifyRes = await fetch("http://127.0.0.1:8001/payments/verify", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
