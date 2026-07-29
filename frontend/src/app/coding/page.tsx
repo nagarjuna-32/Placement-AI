@@ -18,6 +18,25 @@ import {
   GitCommit
 } from "lucide-react";
 
+// ── Supported Languages ────────────────────────────────────────────────────────
+const LANGUAGES = [
+  { id: "python",     label: "Python 3"         },
+  { id: "javascript", label: "JavaScript (ES6)"  },
+  { id: "typescript", label: "TypeScript"        },
+  { id: "java",       label: "Java 17"           },
+  { id: "cpp",        label: "C++ 17"            },
+  { id: "c",          label: "C"                 },
+  { id: "csharp",     label: "C# (.NET)"         },
+  { id: "go",         label: "Go"                },
+  { id: "rust",       label: "Rust"              },
+  { id: "kotlin",     label: "Kotlin"            },
+  { id: "swift",      label: "Swift"             },
+  { id: "ruby",       label: "Ruby"              },
+  { id: "php",        label: "PHP 8"             },
+  { id: "scala",      label: "Scala"             },
+  { id: "r",          label: "R"                 },
+];
+
 // Custom SVG Brand Icons to avoid Lucide V4 Brand Icon deprecations
 const Github = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -321,8 +340,9 @@ export default function CodingSandbox() {
                 onChange={(e) => setLang(e.target.value)}
                 className="bg-zinc-950 border border-zinc-800 text-xs px-2.5 py-1.5 rounded-lg text-zinc-300 focus:outline-none"
               >
-                <option value="python">Python 3</option>
-                <option value="javascript">JavaScript (ES6)</option>
+                {LANGUAGES.map(l => (
+                  <option key={l.id} value={l.id}>{l.label}</option>
+                ))}
               </select>
             </div>
 
