@@ -127,6 +127,93 @@ export default function CodingSandbox() {
         { input: '\"()[]{}\"', expected: "true" },
         { input: '\"(]\"', expected: "false" }
       ]
+    },
+    {
+      id: 3,
+      title: "Fibonacci Number",
+      difficulty: "Easy",
+      description: "The Fibonacci numbers form a sequence such that each number is the sum of the two preceding ones, starting from 0 and 1.\n\nF(0)=0, F(1)=1, F(n)=F(n-1)+F(n-2).\n\nGiven n, calculate F(n).",
+      exampleInput: "n = 10",
+      exampleOutput: "55",
+      templates: {
+        python:     "def fib(n: int) -> int:\n    if n <= 1: return n\n    a, b = 0, 1\n    for _ in range(2, n+1): a, b = b, a+b\n    return b",
+        javascript: "function fib(n) {\n    if (n<=1) return n;\n    let a=0, b=1;\n    for (let i=2; i<=n; i++) [a,b]=[b,a+b];\n    return b;\n}",
+        typescript: "function fib(n: number): number {\n    if (n<=1) return n;\n    let a=0, b=1;\n    for (let i=2; i<=n; i++) [a,b]=[b,a+b];\n    return b;\n}",
+        java:       "class Solution {\n    public int fib(int n) {\n        if (n<=1) return n;\n        int a=0, b=1;\n        for (int i=2;i<=n;i++){int t=a+b;a=b;b=t;}\n        return b;\n    }\n}",
+        cpp:        "class Solution {\npublic:\n    int fib(int n) {\n        if (n<=1) return n;\n        int a=0,b=1;\n        for (int i=2;i<=n;i++){int t=a+b;a=b;b=t;}\n        return b;\n    }\n};",
+        c:          "int fib(int n) {\n    if (n<=1) return n;\n    int a=0,b=1,t;\n    for (int i=2;i<=n;i++){t=a+b;a=b;b=t;}\n    return b;\n}",
+        csharp:     "public class Solution {\n    public int Fib(int n) {\n        if (n<=1) return n;\n        int a=0,b=1;\n        for (int i=2;i<=n;i++){int t=a+b;a=b;b=t;}\n        return b;\n    }\n}",
+        go:         "func fib(n int) int {\n    if n<=1 { return n }\n    a, b := 0, 1\n    for i:=2; i<=n; i++ { a, b = b, a+b }\n    return b\n}",
+        rust:       "pub fn fib(n: i32) -> i32 {\n    if n<=1 { return n; }\n    let (mut a, mut b) = (0i32, 1i32);\n    for _ in 2..=n { let t=a+b; a=b; b=t; }\n    b\n}",
+        kotlin:     "fun fib(n: Int): Int {\n    if (n<=1) return n\n    var a=0; var b=1\n    repeat(n-1) { val t=a+b; a=b; b=t }\n    return b\n}",
+        swift:      "func fib(_ n: Int) -> Int {\n    if n<=1 { return n }\n    var (a,b) = (0,1)\n    for _ in 2...n { (a,b)=(b,a+b) }\n    return b\n}",
+        ruby:       "def fib(n)\n  return n if n <= 1\n  a, b = 0, 1\n  (n-1).times { a, b = b, a+b }\n  b\nend",
+        php:        "<?php\nfunction fib(int $n): int {\n    if ($n<=1) return $n;\n    [$a,$b]=[0,1];\n    for ($i=2;$i<=$n;$i++) [$a,$b]=[$b,$a+$b];\n    return $b;\n}",
+        scala:      "object Solution {\n  def fib(n: Int): Int = {\n    if (n<=1) n\n    else { var (a,b)=(0,1); (2 to n).foreach{_=>val t=a+b;a=b;b=t}; b }\n  }\n}",
+        r:          "fib <- function(n) {\n  if (n <= 1) return(n)\n  a <- 0; b <- 1\n  for (i in 2:n) { t <- a+b; a <- b; b <- t }\n  b\n}",
+      },
+      testCases: [
+        { input: "10", expected: "55" },
+        { input: "0",  expected: "0"  }
+      ]
+    },
+    {
+      id: 4,
+      title: "Maximum Subarray",
+      difficulty: "Medium",
+      description: "Given an integer array nums, find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.\n\nThis is Kadane's Algorithm.",
+      exampleInput: "nums = [-2,1,-3,4,-1,2,1,-5,4]",
+      exampleOutput: "6  (subarray [4,-1,2,1])",
+      templates: {
+        python:     "def maxSubArray(nums: list[int]) -> int:\n    max_sum = curr = nums[0]\n    for n in nums[1:]:\n        curr = max(n, curr + n)\n        max_sum = max(max_sum, curr)\n    return max_sum",
+        javascript: "function maxSubArray(nums) {\n    let maxSum=nums[0], curr=nums[0];\n    for (let i=1;i<nums.length;i++) {\n        curr=Math.max(nums[i],curr+nums[i]);\n        maxSum=Math.max(maxSum,curr);\n    }\n    return maxSum;\n}",
+        typescript: "function maxSubArray(nums: number[]): number {\n    let maxSum=nums[0], curr=nums[0];\n    for (let i=1;i<nums.length;i++) {\n        curr=Math.max(nums[i],curr+nums[i]);\n        maxSum=Math.max(maxSum,curr);\n    }\n    return maxSum;\n}",
+        java:       "class Solution {\n    public int maxSubArray(int[] nums) {\n        int maxSum=nums[0], curr=nums[0];\n        for (int i=1;i<nums.length;i++) {\n            curr=Math.max(nums[i],curr+nums[i]);\n            maxSum=Math.max(maxSum,curr);\n        }\n        return maxSum;\n    }\n}",
+        cpp:        "#include <algorithm>\n#include <vector>\nusing namespace std;\nclass Solution {\npublic:\n    int maxSubArray(vector<int>& nums) {\n        int maxSum=nums[0],curr=nums[0];\n        for (int i=1;i<(int)nums.size();i++) {\n            curr=max(nums[i],curr+nums[i]);\n            maxSum=max(maxSum,curr);\n        }\n        return maxSum;\n    }\n};",
+        c:          "int maxSubArray(int* nums, int n) {\n    int maxSum=nums[0], curr=nums[0];\n    for (int i=1;i<n;i++) {\n        curr=curr+nums[i]>nums[i]?curr+nums[i]:nums[i];\n        if (curr>maxSum) maxSum=curr;\n    }\n    return maxSum;\n}",
+        csharp:     "using System;\npublic class Solution {\n    public int MaxSubArray(int[] nums) {\n        int maxSum=nums[0],curr=nums[0];\n        for (int i=1;i<nums.Length;i++) {\n            curr=Math.Max(nums[i],curr+nums[i]);\n            maxSum=Math.Max(maxSum,curr);\n        }\n        return maxSum;\n    }\n}",
+        go:         "func maxSubArray(nums []int) int {\n    maxSum, curr := nums[0], nums[0]\n    for _, n := range nums[1:] {\n        if curr+n>n { curr=curr+n } else { curr=n }\n        if curr>maxSum { maxSum=curr }\n    }\n    return maxSum\n}",
+        rust:       "pub fn max_sub_array(nums: Vec<i32>) -> i32 {\n    let mut max_sum=nums[0]; let mut curr=nums[0];\n    for &n in &nums[1..] { curr=n.max(curr+n); max_sum=max_sum.max(curr); }\n    max_sum\n}",
+        kotlin:     "fun maxSubArray(nums: IntArray): Int {\n    var maxSum=nums[0]; var curr=nums[0]\n    for (i in 1..nums.lastIndex) {\n        curr=maxOf(nums[i],curr+nums[i]); maxSum=maxOf(maxSum,curr)\n    }\n    return maxSum\n}",
+        swift:      "func maxSubArray(_ nums: [Int]) -> Int {\n    var maxSum=nums[0], curr=nums[0]\n    for i in 1..<nums.count {\n        curr=max(nums[i],curr+nums[i]); maxSum=max(maxSum,curr)\n    }\n    return maxSum\n}",
+        ruby:       "def max_sub_array(nums)\n  max_sum = curr = nums[0]\n  nums[1..].each { |n| curr=[n,curr+n].max; max_sum=[max_sum,curr].max }\n  max_sum\nend",
+        php:        "<?php\nfunction maxSubArray(array $nums): int {\n    $max=$nums[0]; $curr=$nums[0];\n    for ($i=1;$i<count($nums);$i++) {\n        $curr=max($nums[$i],$curr+$nums[$i]); $max=max($max,$curr);\n    }\n    return $max;\n}",
+        scala:      "object Solution {\n  def maxSubArray(nums: Array[Int]): Int = {\n    var (maxSum,curr)=(nums(0),nums(0))\n    for (n <- nums.tail) { curr=n.max(curr+n); maxSum=maxSum.max(curr) }\n    maxSum\n  }\n}",
+        r:          "maxSubArray <- function(nums) {\n  max_sum <- curr <- nums[1]\n  for (n in nums[-1]) { curr <- max(n, curr+n); max_sum <- max(max_sum, curr) }\n  max_sum\n}",
+      },
+      testCases: [
+        { input: "[-2,1,-3,4,-1,2,1,-5,4]", expected: "6" },
+        { input: "[1]",                      expected: "1" }
+      ]
+    },
+    {
+      id: 5,
+      title: "Reverse Linked List",
+      difficulty: "Easy",
+      description: "Given the head of a singly linked list, reverse the list and return the reversed list.\n\nExample: 1 → 2 → 3 → 4 → 5  becomes  5 → 4 → 3 → 2 → 1",
+      exampleInput: "head = [1,2,3,4,5]",
+      exampleOutput: "[5,4,3,2,1]",
+      templates: {
+        python:     "class ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val; self.next = next\n\ndef reverseList(head):\n    prev = None\n    while head:\n        nxt = head.next; head.next = prev; prev = head; head = nxt\n    return prev",
+        javascript: "function reverseList(head) {\n    let prev=null, curr=head;\n    while (curr) {\n        const nxt=curr.next; curr.next=prev; prev=curr; curr=nxt;\n    }\n    return prev;\n}",
+        typescript: "function reverseList(head: ListNode | null): ListNode | null {\n    let prev: ListNode|null=null, curr=head;\n    while (curr) {\n        const nxt=curr.next; curr.next=prev; prev=curr; curr=nxt;\n    }\n    return prev;\n}",
+        java:       "class Solution {\n    public ListNode reverseList(ListNode head) {\n        ListNode prev=null, curr=head;\n        while (curr!=null) {\n            ListNode nxt=curr.next; curr.next=prev; prev=curr; curr=nxt;\n        }\n        return prev;\n    }\n}",
+        cpp:        "struct ListNode{int val;ListNode*next;ListNode(int x):val(x),next(nullptr){}};\nclass Solution {\npublic:\n    ListNode* reverseList(ListNode* head) {\n        ListNode* prev=nullptr;\n        while (head){ListNode* nxt=head->next;head->next=prev;prev=head;head=nxt;}\n        return prev;\n    }\n};",
+        c:          "struct ListNode{int val;struct ListNode*next;};\nstruct ListNode* reverseList(struct ListNode* head) {\n    struct ListNode* prev=NULL;\n    while (head){struct ListNode* nxt=head->next;head->next=prev;prev=head;head=nxt;}\n    return prev;\n}",
+        csharp:     "public class Solution {\n    public ListNode ReverseList(ListNode head) {\n        ListNode prev=null, curr=head;\n        while (curr!=null){var nxt=curr.next;curr.next=prev;prev=curr;curr=nxt;}\n        return prev;\n    }\n}",
+        go:         "type ListNode struct{Val int;Next *ListNode}\nfunc reverseList(head *ListNode) *ListNode {\n    var prev *ListNode\n    for head!=nil{nxt:=head.Next;head.Next=prev;prev=head;head=nxt}\n    return prev\n}",
+        rust:       "pub fn reverse_list(head: Option<Box<ListNode>>) -> Option<Box<ListNode>> {\n    let mut prev = None;\n    let mut curr = head;\n    while let Some(mut node) = curr {\n        curr = node.next.take();\n        node.next = prev;\n        prev = Some(node);\n    }\n    prev\n}",
+        kotlin:     "fun reverseList(head: ListNode?): ListNode? {\n    var prev: ListNode?=null; var curr=head\n    while (curr!=null){val nxt=curr.next;curr.next=prev;prev=curr;curr=nxt}\n    return prev\n}",
+        swift:      "func reverseList(_ head: ListNode?) -> ListNode? {\n    var prev: ListNode?=nil; var curr=head\n    while curr != nil{let nxt=curr?.next;curr?.next=prev;prev=curr;curr=nxt}\n    return prev\n}",
+        ruby:       "def reverse_list(head)\n  prev = nil\n  while head\n    nxt=head.next; head.next=prev; prev=head; head=nxt\n  end\n  prev\nend",
+        php:        "<?php\nfunction reverseList(?ListNode $head): ?ListNode {\n    $prev=null; $curr=$head;\n    while ($curr!==null){$nxt=$curr->next;$curr->next=$prev;$prev=$curr;$curr=$nxt;}\n    return $prev;\n}",
+        scala:      "object Solution {\n  def reverseList(head: ListNode): ListNode = {\n    var prev:ListNode=null; var curr=head\n    while(curr!=null){val nxt=curr.next;curr.next=prev;prev=curr;curr=nxt}\n    prev\n  }\n}",
+        r:          "# Simulate with vector reversal\nreverseList <- function(head) rev(head)",
+      },
+      testCases: [
+        { input: "[1,2,3,4,5]", expected: "[5,4,3,2,1]" },
+        { input: "[1,2]",       expected: "[2,1]"       }
+      ]
     }
   ];
 
